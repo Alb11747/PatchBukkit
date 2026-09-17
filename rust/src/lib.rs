@@ -23,7 +23,7 @@ use crate::{
     },
 };
 
-async fn on_load_inner(plugin: &PatchBukkitPlugin, server: Arc<Context>) -> Result<(), String> {
+pub async fn on_load_inner(plugin: &PatchBukkitPlugin, server: Arc<Context>) -> Result<(), String> {
     server.init_log();
     tracing::info!("Starting PatchBukkit");
 
@@ -124,7 +124,10 @@ async fn on_load_inner(plugin: &PatchBukkitPlugin, server: Arc<Context>) -> Resu
     Ok(())
 }
 
-async fn on_unload_inner(plugin: &PatchBukkitPlugin, _server: Arc<Context>) -> Result<(), String> {
+pub async fn on_unload_inner(
+    plugin: &PatchBukkitPlugin,
+    _server: Arc<Context>,
+) -> Result<(), String> {
     {
         let (tx, rx) = oneshot::channel();
         plugin

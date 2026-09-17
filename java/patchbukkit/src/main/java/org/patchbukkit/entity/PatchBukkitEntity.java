@@ -86,19 +86,41 @@ public class PatchBukkitEntity implements Entity {
     private Location cachedLocation;
     private EntityType entityType = EntityType.UNKNOWN;
 
-    public static Entity create(UUID uuid, EntityType type, Location loc) {
-        PatchBukkitEntity entity = new PatchBukkitEntity(uuid, type != null ? type.name() : "entity");
+    public static Entity create(UUID uuid, EntityType type, Location loc, int entityId) {
+        PatchBukkitEntity entity = new PatchBukkitEntity(uuid, type != null ? type.name() : "entity", entityId);
         entity.entityType = type != null ? type : EntityType.UNKNOWN;
         entity.cachedLocation = loc != null ? loc.clone() : new Location(null, 0, 0, 0);
         return entity;
+    }
+
+    public static Entity create(UUID uuid, EntityType type, Location loc) {
+        return create(uuid, type, loc, -1);
+    }
+
+    private static final java.util.concurrent.atomic.AtomicInteger NEXT_ENTITY_ID = new java.util.concurrent.atomic.AtomicInteger(1);
+    protected int entityId;
+
+    public PatchBukkitEntity(
+        UUID uuid,
+        String name,
+        int entityId
+    ) {
+        this.uuid = uuid;
+        this.name = name;
+        this.entityId = entityId > 0 ? entityId : -1;
     }
 
     public PatchBukkitEntity(
         UUID uuid,
         String name
     ) {
-        this.uuid = uuid;
-        this.name = name;
+        this(uuid, name, -1);
+    }
+
+    public void setEntityId(int entityId) {
+        if (entityId > 0) {
+            this.entityId = entityId;
+        }
     }
 
     @Override
@@ -425,8 +447,18 @@ public class PatchBukkitEntity implements Entity {
 
     @Override
     public int getEntityId() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getEntityId'");
+        if (this.entityId <= 0) {
+            try {
+                var resp = NativeBridgeFfi.getEntityId(BridgeUtils.convertUuid(this.uuid));
+                if (resp != null && resp.getEntityId() > 0) {
+                    this.entityId = resp.getEntityId();
+                }
+            } catch (Throwable ignored) {}
+        }
+        if (this.entityId <= 0) {
+            this.entityId = NEXT_ENTITY_ID.incrementAndGet();
+        }
+        return this.entityId;
     }
 
     @Override

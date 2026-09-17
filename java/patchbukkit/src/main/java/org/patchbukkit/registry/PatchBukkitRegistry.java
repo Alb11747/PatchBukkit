@@ -124,6 +124,11 @@ public class PatchBukkitRegistry<P, B extends Keyed> implements Registry<B> {
                 }
             } else if (RegistryKey.SOUND_EVENT.equals(registryKey) || "sound_event".equalsIgnoreCase(registryKey.key().value())) {
                 // Do not reflectively autoDiscover Sound.class because Sound.<clinit> depends on Registry.SOUNDS!
+            } else if (RegistryKey.MENU.equals(registryKey) || "menu".equalsIgnoreCase(registryKey.key().value())) {
+                // Do not reflectively autoDiscover MenuType.class because MenuType.<clinit> depends on Registry.MENU!
+            } else if (RegistryKey.DAMAGE_TYPE.equals(registryKey) || "damage_type".equalsIgnoreCase(registryKey.key().value())) {
+                // Do not reflectively autoDiscover DamageType.class because DamageType.<clinit> depends on Registry.DAMAGE_TYPE!
+                populateDefaultDamageTypes();
             } else {
                 Class<B> valueClass = (Class<B>) LegacyRegistryIdentifiers.KEY_TO_CLASS_MAP.get(registryKey);
                 if (valueClass != null) {
@@ -131,6 +136,68 @@ public class PatchBukkitRegistry<P, B extends Keyed> implements Registry<B> {
                     entries.putAll(discovered);
                 }
             }
+        }
+    }
+
+    private static final String[] DEFAULT_DAMAGE_TYPES = {
+        "arrow",
+        "bad_respawn_point",
+        "cactus",
+        "campfire",
+        "cramming",
+        "dragon_breath",
+        "drown",
+        "dry_out",
+        "ender_pearl",
+        "explosion",
+        "fall",
+        "falling_anvil",
+        "falling_block",
+        "falling_stalactite",
+        "fireball",
+        "fireworks",
+        "fly_into_wall",
+        "freeze",
+        "generic",
+        "generic_kill",
+        "hot_floor",
+        "in_fire",
+        "in_wall",
+        "indirect_magic",
+        "lava",
+        "lightning_bolt",
+        "mace_smash",
+        "magic",
+        "mob_attack",
+        "mob_attack_no_aggro",
+        "mob_projectile",
+        "on_fire",
+        "out_of_world",
+        "outside_border",
+        "player_attack",
+        "player_explosion",
+        "sonic_boom",
+        "spear",
+        "spit",
+        "stalagmite",
+        "starve",
+        "sting",
+        "sulfur_cube_hot",
+        "sweet_berry_bush",
+        "thorns",
+        "thrown",
+        "trident",
+        "unattributed_fireball",
+        "wind_charge",
+        "wither",
+        "wither_skull"
+    };
+
+    @SuppressWarnings("unchecked")
+    private void populateDefaultDamageTypes() {
+        for (String name : DEFAULT_DAMAGE_TYPES) {
+            NamespacedKey key = NamespacedKey.minecraft(name);
+            entries.put(key, (B) new PatchBukkitDamageType(key));
         }
     }
 
@@ -220,6 +287,26 @@ public class PatchBukkitRegistry<P, B extends Keyed> implements Registry<B> {
                             return blockType;
                         }
                     }
+                } catch (Throwable ignored) {}
+            }
+            // Fallback for MenuType via CraftMenuType
+            if (RegistryKey.MENU.equals(registryKey) || "menu".equalsIgnoreCase(registryKey != null ? registryKey.key().value() : "")) {
+                try {
+                    var nmsIdent = org.bukkit.craftbukkit.util.CraftNamespacedKey.toMinecraft(key);
+                    var holderOpt = net.minecraft.core.registries.BuiltInRegistries.MENU.get(nmsIdent);
+                    if (holderOpt != null && holderOpt.isPresent()) {
+                        B menuType = (B) new org.bukkit.craftbukkit.inventory.CraftMenuType<>(holderOpt.get());
+                        entries.put(key, menuType);
+                        return menuType;
+                    }
+                } catch (Throwable ignored) {}
+            }
+            // Fallback for DamageType
+            if (RegistryKey.DAMAGE_TYPE.equals(registryKey) || "damage_type".equalsIgnoreCase(registryKey != null ? registryKey.key().value() : "")) {
+                try {
+                    PatchBukkitDamageType damageType = new PatchBukkitDamageType(key);
+                    entries.put(key, (B) damageType);
+                    return (B) damageType;
                 } catch (Throwable ignored) {}
             }
         } finally {

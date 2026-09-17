@@ -56,3 +56,9 @@ java/.idea/
 .vscode/
 
 .DS_Store
+
+# Runtime configs
+config/
+java/patchbukkit/config/
+logs/
+java/patchbukkit/logs/

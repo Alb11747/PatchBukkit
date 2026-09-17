@@ -231,6 +231,14 @@ message GetCooldownResponse {
   bool is_on_cooldown = 2;
 }
 
+message GetEntityIdResponse {
+  int32 entity_id = 1;
+}
 
+message GetEntityUuidRequest {
+  int32 entity_id = 1;
+}
 
-
+message GetEntityUuidResponse {
+  patchbukkit.common.UUID uuid = 1;
+}

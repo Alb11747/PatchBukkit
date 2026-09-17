@@ -60,9 +60,12 @@ public class PatchBukkitLivingEntity
     extends PatchBukkitEntity
     implements LivingEntity {
 
-    public PatchBukkitLivingEntity(UUID uuid,
-        String name) {
-        super(uuid, name);
+    public PatchBukkitLivingEntity(UUID uuid, String name, int entityId) {
+        super(uuid, name, entityId);
+    }
+
+    public PatchBukkitLivingEntity(UUID uuid, String name) {
+        this(uuid, name, -1);
     }
     @Override
     public double getEyeHeight() {

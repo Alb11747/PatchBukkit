@@ -77,15 +77,17 @@ impl EventManager {
 
         let uuid_jstr = env.new_string(player.gameprofile.id.to_string())?;
         let name_jstr = env.new_string(&player.gameprofile.name)?;
+        let entity_id = player.living_entity.entity.entity_id;
 
         env.call_static_method(
             jni::jni_str!("org/patchbukkit/PatchBukkitServer"),
             jni::jni_str!("registerPlayer"),
-            jni::jni_sig!("(Ljava/lang/String;Ljava/lang/String;Z)V"),
+            jni::jni_sig!("(Ljava/lang/String;Ljava/lang/String;ZI)V"),
             &[
                 (&uuid_jstr).into(),
                 (&name_jstr).into(),
                 jni::objects::JValue::Bool(is_op),
+                jni::objects::JValue::Int(entity_id),
             ],
         )?;
 

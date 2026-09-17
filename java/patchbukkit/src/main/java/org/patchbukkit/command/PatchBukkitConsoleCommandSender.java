@@ -50,7 +50,8 @@ public class PatchBukkitConsoleCommandSender
 
     @Override
     public @NotNull Server getServer() {
-        return Bukkit.getServer();
+        org.bukkit.craftbukkit.CraftServer cs = org.patchbukkit.PatchBukkitServer.getCraftServer();
+        return cs != null ? cs : Bukkit.getServer();
     }
 
     @Override

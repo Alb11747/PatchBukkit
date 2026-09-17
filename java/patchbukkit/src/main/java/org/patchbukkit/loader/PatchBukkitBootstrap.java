@@ -23,6 +23,7 @@ public class PatchBukkitBootstrap {
 
     public static boolean bootstrapPlugins(String pluginsDirPath) {
         try {
+            org.patchbukkit.PatchBukkitServer.initServer();
             File pluginsDir = new File(pluginsDirPath);
             if (!pluginsDir.exists() || !pluginsDir.isDirectory()) {
                 LOGGER.info("[PatchBukkit] Plugins directory does not exist: " + pluginsDirPath);
@@ -208,6 +209,7 @@ public class PatchBukkitBootstrap {
         }
 
         try {
+            org.patchbukkit.PatchBukkitServer.ensureCraftRegistry();
             plugin.onLoad();
         } catch (Throwable t) {
             LOGGER.log(Level.SEVERE, "[PatchBukkit] Error during onLoad() for " + holder.name, t);

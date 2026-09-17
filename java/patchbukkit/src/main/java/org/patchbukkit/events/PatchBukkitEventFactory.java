@@ -146,8 +146,22 @@ public class PatchBukkitEventFactory {
                 var ev = event.getMapInitialize();
                 yield createGenericBukkitEvent("org.bukkit.event.server.MapInitializeEvent", ev);
             }
-            case PACKET_RECEIVED -> null;
-            case PACKET_SENT -> null;
+            case PACKET_RECEIVED -> {
+                var ev = event.getPacketReceived();
+                if (ev.hasPlayerUuid()) {
+                    java.util.UUID uuid = java.util.UUID.fromString(ev.getPlayerUuid().getValue());
+                    org.patchbukkit.network.VirtualChannelManager.getInstance().handlePacketReceived(uuid, ev.getPacketId(), ev.getPayload().toByteArray());
+                }
+                yield null;
+            }
+            case PACKET_SENT -> {
+                var ev = event.getPacketSent();
+                if (ev.hasPlayerUuid()) {
+                    java.util.UUID uuid = java.util.UUID.fromString(ev.getPlayerUuid().getValue());
+                    org.patchbukkit.network.VirtualChannelManager.getInstance().handlePacketSent(uuid, ev.getPacketId(), ev.getPayload().toByteArray());
+                }
+                yield null;
+            }
             case PLUGIN_DISABLE -> {
                 var ev = event.getPluginDisable();
                 var plugin = Bukkit.getPluginManager().getPlugin(ev.getPluginName());
@@ -687,6 +701,9 @@ public class PatchBukkitEventFactory {
                 var ev = event.getPlayerJoin();
                 Player player = getPlayer(ev.getPlayerUuid().getValue());
                 if (player == null) yield null;
+                if (ev.getEntityId() > 0 && player instanceof org.patchbukkit.entity.PatchBukkitEntity pbe) {
+                    pbe.setEntityId(ev.getEntityId());
+                }
                 Component msg = ev.getJoinMessage().isEmpty() ? Component.empty() : GsonComponentSerializer.gson().deserialize(ev.getJoinMessage());
                 yield new org.bukkit.event.player.PlayerJoinEvent(player, msg);
             }
@@ -701,6 +718,11 @@ public class PatchBukkitEventFactory {
             case PLAYER_LEAVE -> {
                 var ev = event.getPlayerLeave();
                 Player player = getPlayer(ev.getPlayerUuid().getValue());
+                if (ev.hasPlayerUuid()) {
+                    org.patchbukkit.network.VirtualChannelManager.getInstance().removePlayer(
+                        java.util.UUID.fromString(ev.getPlayerUuid().getValue())
+                    );
+                }
                 if (player == null) yield null;
                 Component msg = ev.getLeaveMessage().isEmpty() ? Component.empty() : GsonComponentSerializer.gson().deserialize(ev.getLeaveMessage());
                 yield new org.bukkit.event.player.PlayerQuitEvent(player, msg);
@@ -1293,7 +1315,7 @@ public class PatchBukkitEventFactory {
             java.util.UUID uuid = java.util.UUID.fromString(uuidStr);
             Player player = Bukkit.getServer().getPlayer(uuid);
             if (player == null) {
-                player = new org.patchbukkit.entity.PatchBukkitPlayer(uuid, "Player");
+                player = new org.patchbukkit.entity.CraftPlayer(uuid, "Player");
                 if (Bukkit.getServer() instanceof org.patchbukkit.PatchBukkitServer server) {
                     server.registerPlayer(player);
                 }
@@ -1306,7 +1328,7 @@ public class PatchBukkitEventFactory {
 
     @NotNull
     public static Entity getEntity(int entityId) {
-        return new org.patchbukkit.entity.PatchBukkitEntity(new java.util.UUID(0, entityId), "Entity-" + entityId);
+        return new org.patchbukkit.entity.CraftEntity(new java.util.UUID(0, entityId), "Entity-" + entityId);
     }
 
     @Nullable

@@ -154,6 +154,7 @@ message EntitySummaryProto {
   float pitch = 7;
   bool is_player = 8;
   string custom_name = 9;
+  int32 entity_id = 10;
 }
 
 message GetWorldEntitiesRequest {
@@ -177,6 +178,7 @@ message SpawnWorldEntityRequest {
 message SpawnWorldEntityResponse {
   patchbukkit.common.UUID entity_uuid = 1;
   bool success = 2;
+  int32 entity_id = 3;
 }
 
 message CreateWorldExplosionRequest {

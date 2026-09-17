@@ -62,8 +62,8 @@ pub fn ffi_native_bridge_player_play_sound_impl(request: PlayerPlaySoundRequest)
     let category = SoundCategory::from_name(&sound.category.to_lowercase())?;
 
     let seed = match request.seed {
-        Some(seed) => seed as f64,
-        None => rng().random::<f64>(),
+        Some(seed) => seed,
+        None => rng().random::<i64>(),
     };
 
     let position = request.location?.position?;

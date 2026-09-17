@@ -423,6 +423,7 @@ pub fn ffi_native_bridge_get_world_entities_impl(
             pitch: p.living_entity.entity.pitch.load(),
             is_player: true,
             custom_name: p.gameprofile.name.clone(),
+            entity_id: p.living_entity.entity.entity_id,
         });
     }
 
@@ -441,6 +442,7 @@ pub fn ffi_native_bridge_get_world_entities_impl(
             pitch: base.pitch.load(),
             is_player: false,
             custom_name: String::new(),
+            entity_id: base.entity_id,
         });
     }
 
@@ -464,21 +466,23 @@ pub fn ffi_native_bridge_spawn_world_entity_impl(
     let new_uuid = uuid::Uuid::new_v4();
     let pos = Vector3::new(request.x, request.y, request.z);
 
+    let entity_type: &'static pumpkin_data::entity::EntityType =
+        match request.entity_type.to_uppercase().as_str() {
+            "LIGHTNING_BOLT" | "LIGHTNING" => &pumpkin_data::entity::EntityType::LIGHTNING_BOLT,
+            "ITEM" | "DROPPED_ITEM" => &pumpkin_data::entity::EntityType::ITEM,
+            "ZOMBIE" => &pumpkin_data::entity::EntityType::ZOMBIE,
+            "SKELETON" => &pumpkin_data::entity::EntityType::SKELETON,
+            "CREEPER" => &pumpkin_data::entity::EntityType::CREEPER,
+            "COW" => &pumpkin_data::entity::EntityType::COW,
+            "PIG" => &pumpkin_data::entity::EntityType::PIG,
+            "SHEEP" => &pumpkin_data::entity::EntityType::SHEEP,
+            _ => &pumpkin_data::entity::EntityType::PIG,
+        };
+    let entity = pumpkin::entity::r#type::from_type(entity_type, pos, &world, new_uuid);
+    let entity_id = entity.get_entity().entity_id;
+
     let w = world.clone();
     ctx.runtime.spawn(async move {
-        let entity_type: &'static pumpkin_data::entity::EntityType =
-            match request.entity_type.to_uppercase().as_str() {
-                "LIGHTNING_BOLT" | "LIGHTNING" => &pumpkin_data::entity::EntityType::LIGHTNING_BOLT,
-                "ITEM" | "DROPPED_ITEM" => &pumpkin_data::entity::EntityType::ITEM,
-                "ZOMBIE" => &pumpkin_data::entity::EntityType::ZOMBIE,
-                "SKELETON" => &pumpkin_data::entity::EntityType::SKELETON,
-                "CREEPER" => &pumpkin_data::entity::EntityType::CREEPER,
-                "COW" => &pumpkin_data::entity::EntityType::COW,
-                "PIG" => &pumpkin_data::entity::EntityType::PIG,
-                "SHEEP" => &pumpkin_data::entity::EntityType::SHEEP,
-                _ => &pumpkin_data::entity::EntityType::PIG,
-            };
-        let entity = pumpkin::entity::r#type::from_type(entity_type, pos, &w, new_uuid);
         w.spawn_entity(entity);
     });
 
@@ -487,6 +491,7 @@ pub fn ffi_native_bridge_spawn_world_entity_impl(
             value: new_uuid.to_string(),
         }),
         success: true,
+        entity_id,
     })
 }
 

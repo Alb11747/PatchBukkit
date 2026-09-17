@@ -2253,7 +2253,8 @@ pub fn ffi_native_bridge_register_event_impl(request: RegisterEventRequest) -> O
                     request.blocking,
                 );
         }
-        "org.bukkit.event.player.PlayerPreLoginEvent" => {
+        "org.bukkit.event.player.PlayerPreLoginEvent"
+        | "io.papermc.paper.event.connection.PlayerConnectionValidateLoginEvent" => {
             plugin_context
                 .register_event::<
                     pumpkin::plugin::player::player_pre_login::PlayerPreLoginEvent,
@@ -3750,6 +3751,16 @@ pub fn ffi_native_bridge_register_event_impl(request: RegisterEventRequest) -> O
         | "org.bukkit.event.raid.RaidEvent" => {
             tracing::info!(
                 "Registered Bukkit generic event listener '{}' from plugin '{}'",
+                request.event_type,
+                request.plugin_name
+            );
+        }
+        name if name.starts_with("io.papermc.paper.event.")
+            || name.starts_with("com.destroystokyo.paper.event.")
+            || name.starts_with("org.spigotmc.event.") =>
+        {
+            tracing::info!(
+                "Registered Paper/Spigot event listener '{}' from plugin '{}'",
                 request.event_type,
                 request.plugin_name
             );

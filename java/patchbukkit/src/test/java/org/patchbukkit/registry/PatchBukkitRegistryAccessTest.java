@@ -65,6 +65,31 @@ public class PatchBukkitRegistryAccessTest {
     }
 
     @Test
+    public void testDamageTypeInitialization() {
+        assertDoesNotThrow(() -> {
+            org.bukkit.damage.DamageType arrow = org.bukkit.damage.DamageType.ARROW;
+            assertNotNull(arrow, "DamageType.ARROW must initialize successfully without ExceptionInInitializerError");
+            assertEquals(org.bukkit.NamespacedKey.minecraft("arrow"), arrow.getKey());
+            assertNotNull(arrow.getTranslationKey());
+            assertNotNull(arrow.getDamageScaling());
+            assertNotNull(arrow.getDamageEffect());
+            assertNotNull(arrow.getDeathMessageType());
+
+            org.bukkit.damage.DamageType generic = org.bukkit.damage.DamageType.GENERIC;
+            assertNotNull(generic);
+            assertEquals(org.bukkit.NamespacedKey.minecraft("generic"), generic.getKey());
+
+            Registry<org.bukkit.damage.DamageType> damageTypeReg = Registry.DAMAGE_TYPE;
+            assertNotNull(damageTypeReg);
+            assertSame(arrow, damageTypeReg.get(org.bukkit.NamespacedKey.minecraft("arrow")));
+
+            org.bukkit.damage.DamageSource source = org.bukkit.damage.DamageSource.builder(arrow).build();
+            assertNotNull(source);
+            assertEquals(arrow, source.getDamageType());
+        });
+    }
+
+    @Test
     public void testInspectBlockTypeAndDataMethods() {
         System.out.println("=== BLOCK TYPE METHODS ===");
         for (java.lang.reflect.Method m : org.bukkit.block.BlockType.class.getMethods()) {

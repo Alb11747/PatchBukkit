@@ -100,11 +100,29 @@ public class PatchBukkitInternalAPIBridge implements InternalAPIBridge {
     }
 
     public @Nullable DamageEffect getDamageEffect(String key) {
-        return null;
+        if (key == null) return null;
+        try {
+            var craft = org.bukkit.craftbukkit.damage.CraftDamageEffect.getById(key);
+            if (craft != null) return craft;
+        } catch (Throwable ignored) {}
+
+        return switch (key.toLowerCase(java.util.Locale.ROOT)) {
+            case "hurt" -> () -> org.bukkit.Sound.ENTITY_PLAYER_HURT;
+            case "thorns" -> () -> org.bukkit.Sound.ENCHANT_THORNS_HIT;
+            case "drowning" -> () -> org.bukkit.Sound.ENTITY_PLAYER_HURT_DROWN;
+            case "burning" -> () -> org.bukkit.Sound.ENTITY_PLAYER_HURT_ON_FIRE;
+            case "poking" -> () -> org.bukkit.Sound.ENTITY_PLAYER_HURT_SWEET_BERRY_BUSH;
+            case "freezing" -> () -> org.bukkit.Sound.ENTITY_PLAYER_HURT_FREEZE;
+            default -> () -> org.bukkit.Sound.ENTITY_PLAYER_HURT;
+        };
     }
 
     public DamageSource.Builder createDamageSourceBuilder(DamageType damageType) {
-        return null;
+        try {
+            return new org.bukkit.craftbukkit.damage.CraftDamageSourceBuilder(damageType);
+        } catch (Throwable t) {
+            return null;
+        }
     }
 
     public PoiType.Occupancy createOccupancy(String type) {

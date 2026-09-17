@@ -14,6 +14,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
+import java.lang.reflect.Field;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import org.bukkit.plugin.InvalidDescriptionException;
 import org.bukkit.plugin.PluginDescriptionFile;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -24,6 +27,7 @@ public class PatchBukkitPluginClassLoader
     implements ConfiguredPluginClassLoader
 {
 
+    private static final Logger LOGGER = Logger.getLogger("PatchBukkitPluginClassLoader");
     private final PluginDescriptionFile description;
     private final File dataFolder;
     private final File file;
@@ -31,6 +35,9 @@ public class PatchBukkitPluginClassLoader
 
     static {
         ClassLoader.registerAsParallelCapable();
+        try {
+            org.patchbukkit.PatchBukkitServer.ensureCraftRegistry();
+        } catch (Throwable ignored) {}
     }
 
     public static final java.util.Set<PatchBukkitPluginClassLoader> ALL_LOADERS =
@@ -55,6 +62,17 @@ public class PatchBukkitPluginClassLoader
         File libsDir = new File(file.getParentFile(), "patchbukkit-libs");
         if (!libsDir.exists()) {
             libsDir.mkdirs();
+        }
+
+        // Ensure official Mojang server bytecode is cached and added to classpath
+        File mojangServerJar = MojangServerProvider.getOrDownloadServerJar(
+            libsDir,
+            org.patchbukkit.versioning.Versioning.getCurrentApiVersion()
+        );
+        if (mojangServerJar != null && mojangServerJar.exists()) {
+            try {
+                addURL(mojangServerJar.toURI().toURL());
+            } catch (MalformedURLException ignored) {}
         }
 
         // Extract and load nested JARs inside plugin JAR
@@ -281,6 +299,9 @@ public class PatchBukkitPluginClassLoader
     @Override
     protected Class<?> loadClass(String name, boolean resolve)
         throws ClassNotFoundException {
+        if (name != null && name.indexOf('/') != -1) {
+            name = name.replace('/', '.');
+        }
         synchronized (getClassLoadingLock(name)) {
             // First, check if already loaded
             Class<?> c = findLoadedClass(name);
@@ -292,7 +313,13 @@ public class PatchBukkitPluginClassLoader
                     !name.startsWith("java.") &&
                     !name.startsWith("jdk.") &&
                     !name.startsWith("sun.") &&
-                    !name.startsWith("javax.")
+                    !name.startsWith("javax.") &&
+                    !name.startsWith("org.bukkit.") &&
+                    !name.startsWith("io.papermc.") &&
+                    !name.startsWith("net.minecraft.") &&
+                    !name.startsWith("org.spigotmc.") &&
+                    !name.startsWith("com.destroystokyo.paper.") &&
+                    !name.startsWith("org.patchbukkit.")
                 ) {
                     try {
                         // Try to find in plugin JAR / libraries first
@@ -315,9 +342,30 @@ public class PatchBukkitPluginClassLoader
                     }
                 }
 
-                // If not found in JAR (or is a system class), delegate to parent
+                // If not found in JAR (or is a system/server class), delegate to parent
                 if (c == null) {
-                    c = getParent().loadClass(name);
+                    try {
+                        c = getParent().loadClass(name);
+                    } catch (ClassNotFoundException e) {
+                        String remapped = remapLegacyClass(name);
+                        if (remapped != null) {
+                            try {
+                                c = getParent().loadClass(remapped);
+                            } catch (ClassNotFoundException ignored) {
+                                try {
+                                    c = findClass(remapped);
+                                } catch (ClassNotFoundException ignored2) {}
+                            }
+                        }
+                        if (c == null) {
+                            try {
+                                c = findClass(name);
+                            } catch (ClassNotFoundException ignored3) {}
+                        }
+                        if (c == null) {
+                            throw e;
+                        }
+                    }
                 }
             }
 
@@ -326,6 +374,64 @@ public class PatchBukkitPluginClassLoader
             }
             return c;
         }
+    }
+
+    @Override
+    protected Class<?> findClass(String name) throws ClassNotFoundException {
+        Class<?> loaded = findLoadedClass(name);
+        if (loaded != null) return loaded;
+
+        String path = name.replace('.', '/').concat(".class");
+        URL resource = findResource(path);
+        if (resource != null) {
+            try (InputStream is = resource.openStream()) {
+                byte[] raw = is.readAllBytes();
+                byte[] transformed = BytecodeTransformer.transform(raw);
+                return defineClass(name, transformed, 0, transformed.length, (java.security.CodeSource) null);
+            } catch (Throwable t) {
+                LOGGER.log(Level.FINE, "[PatchBukkit] Failed to define transformed class " + name, t);
+            }
+        }
+        return super.findClass(name);
+    }
+
+    private static String remapLegacyClass(String name) {
+        if (name == null) return null;
+
+        // Missing dot in CraftBukkit package (e.g. from Cloud command framework where CB_PKG_VERSION was empty)
+        // e.g. org.bukkit.craftbukkitcommand.VanillaCommandWrapper -> org.bukkit.craftbukkit.command.VanillaCommandWrapper
+        if (name.startsWith("org.bukkit.craftbukkit") && !name.startsWith("org.bukkit.craftbukkit.")) {
+            return "org.bukkit.craftbukkit." + name.substring("org.bukkit.craftbukkit".length());
+        }
+
+        // 1. Versioned CraftBukkit (e.g. org.bukkit.craftbukkit.v1_20_R3.entity.CraftPlayer -> org.bukkit.craftbukkit.entity.CraftPlayer)
+        if (name.startsWith("org.bukkit.craftbukkit.")) {
+            String unversioned = name.replaceFirst("^org\\.bukkit\\.craftbukkit\\.(v[0-9_]+R[0-9]+\\.)?", "org.bukkit.craftbukkit.");
+            if (!unversioned.equals(name)) {
+                return unversioned;
+            }
+        }
+
+        // 2. Legacy pre-1.17 NMS package (net.minecraft.server.v1_XX_RX.XYZ)
+        if (name.startsWith("net.minecraft.server.v")) {
+            String simpleName = name.substring(name.lastIndexOf('.') + 1);
+            return switch (simpleName) {
+                case "EntityPlayer" -> "net.minecraft.server.level.ServerPlayer";
+                case "MinecraftServer" -> "net.minecraft.server.MinecraftServer";
+                case "WorldServer" -> "net.minecraft.server.level.ServerLevel";
+                case "ItemStack" -> "net.minecraft.world.item.ItemStack";
+                case "Item" -> "net.minecraft.world.item.Item";
+                case "Block" -> "net.minecraft.world.level.block.Block";
+                case "Entity" -> "net.minecraft.world.entity.Entity";
+                case "NBTTagCompound" -> "net.minecraft.nbt.CompoundTag";
+                case "Packet" -> "net.minecraft.network.protocol.Packet";
+                case "PlayerConnection" -> "net.minecraft.server.network.ServerGamePacketListenerImpl";
+                case "World" -> "net.minecraft.world.level.Level";
+                default -> null;
+            };
+        }
+
+        return null;
     }
 
     @Override

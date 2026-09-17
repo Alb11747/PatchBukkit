@@ -51,8 +51,8 @@ pub fn ffi_native_bridge_get_server_info_impl(
     Some(ServerInfoResponse {
         server_name: "Pumpkin".to_string(),
         version: "0.1.0".to_string(),
-        bukkit_version: "1.21.4-R0.1-SNAPSHOT".to_string(),
-        minecraft_version: "1.21.4".to_string(),
+        bukkit_version: format!("{}-R0.1-SNAPSHOT", pumpkin_data::packet::CURRENT_MC_VERSION),
+        minecraft_version: pumpkin_data::packet::CURRENT_MC_VERSION.to_string(),
         motd,
         ip,
         port,

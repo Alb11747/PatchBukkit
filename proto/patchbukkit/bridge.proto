@@ -22,6 +22,8 @@ service NativeBridge {
   rpc SetAbilities(patchbukkit.abilities.SetAbilitiesRequest) returns (patchbukkit.abilities.SetAbilitiesResponse);
 
   rpc GetEntityHealth(patchbukkit.common.UUID) returns (patchbukkit.entity.EntityHealthResponse);
+  rpc GetEntityId(patchbukkit.common.UUID) returns (patchbukkit.entity.GetEntityIdResponse);
+  rpc GetEntityUuid(patchbukkit.entity.GetEntityUuidRequest) returns (patchbukkit.entity.GetEntityUuidResponse);
   rpc SetEntityHealth(patchbukkit.entity.SetEntityHealthRequest) returns (google.protobuf.Empty);
   rpc DamageEntity(patchbukkit.entity.DamageEntityRequest) returns (google.protobuf.Empty);
   rpc GetEntityVelocity(patchbukkit.common.UUID) returns (patchbukkit.entity.EntityVelocityResponse);

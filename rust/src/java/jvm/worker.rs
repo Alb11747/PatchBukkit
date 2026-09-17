@@ -296,9 +296,17 @@ impl JvmWorker {
             .build()
             .map_err(|e| anyhow::anyhow!("Failed to build JVM init args: {e:?}"))?;
 
-        let jvm =
-            JavaVM::new(jvm_args).map_err(|e| anyhow::anyhow!("Failed to create JavaVM: {e:?}"))?;
-        let jvm = Arc::new(jvm);
+        let jvm = match JavaVM::new(jvm_args) {
+            Ok(jvm) => Arc::new(jvm),
+            Err(e) => {
+                if let Ok(existing) = JavaVM::singleton() {
+                    tracing::info!("Reusing existing JavaVM in process");
+                    Arc::new(existing)
+                } else {
+                    return Err(anyhow::anyhow!("Failed to create JavaVM: {e:?}"));
+                }
+            }
+        };
 
         jvm.attach_current_thread(|env| -> anyhow::Result<()> {
             initialize_callbacks(env).map_err(|e| {

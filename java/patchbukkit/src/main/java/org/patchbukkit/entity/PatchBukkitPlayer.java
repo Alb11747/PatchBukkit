@@ -124,12 +124,23 @@ public class PatchBukkitPlayer extends PatchBukkitHumanEntity implements Player 
     private int expCooldown = 0;
     private TriState flyingFallDamage = TriState.NOT_SET;
 
-    public PatchBukkitPlayer(UUID uuid, String name) {
-        super(uuid, name);
+    public PatchBukkitPlayer(UUID uuid, String name, int entityId) {
+        super(uuid, name, entityId);
         this.displayName = name;
         this.playerListName = name;
         this.firstPlayed = System.currentTimeMillis();
         this.lastLogin = System.currentTimeMillis();
+    }
+
+    public PatchBukkitPlayer(UUID uuid, String name) {
+        this(uuid, name, -1);
+    }
+
+    public net.minecraft.server.level.ServerPlayer getHandle() {
+        return org.patchbukkit.network.VirtualChannelManager.getInstance().getOrCreateServerPlayer(this);
+    }
+
+    {
         this.spigot = new Player.Spigot() {
             @Override
             public void sendMessage(@NotNull BaseComponent component) {
@@ -2052,6 +2063,11 @@ public class PatchBukkitPlayer extends PatchBukkitHumanEntity implements Player 
     @Override
     public <T> void spawnParticle(@NotNull Particle particle, double x, double y, double z, int count, double offsetX, double offsetY, double offsetZ, double extra, @Nullable T data, boolean force) {
         spawnParticle(particle, x, y, z, count, offsetX, offsetY, offsetZ, extra, data);
+    }
+
+    @Override
+    public <T> void spawnParticle(@NotNull Particle particle, double x, double y, double z, int count, double offsetX, double offsetY, double offsetZ, double extra, double xSpread, double ySpread, @Nullable T data, boolean force, @NotNull Particle.RandomizationType randomizationType) {
+        spawnParticle(particle, x, y, z, count, offsetX, offsetY, offsetZ, extra, data, force);
     }
 
     @Override

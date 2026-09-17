@@ -146,6 +146,7 @@ public class PatchBukkitRegionAccessor implements RegionAccessor {
     ) {
         UUID worldUuid = (this instanceof PatchBukkitWorld w) ? w.getUID() : UUID.randomUUID();
         UUID entityUuid = UUID.randomUUID();
+        int entityId = -1;
         try {
             var res = NativeBridgeFfi.spawnWorldEntity(SpawnWorldEntityRequest.newBuilder()
                 .setWorldUuid(BridgeUtils.convertUuid(worldUuid))
@@ -156,12 +157,17 @@ public class PatchBukkitRegionAccessor implements RegionAccessor {
                 .setYaw(loc.getYaw())
                 .setPitch(loc.getPitch())
                 .build());
-            if (res != null && res.hasEntityUuid()) {
-                entityUuid = UUID.fromString(res.getEntityUuid().getValue());
+            if (res != null) {
+                if (res.hasEntityUuid()) {
+                    entityUuid = UUID.fromString(res.getEntityUuid().getValue());
+                }
+                if (res.getEntityId() > 0) {
+                    entityId = res.getEntityId();
+                }
             }
         } catch (Throwable ignored) {}
 
-        Entity entity = PatchBukkitEntity.create(entityUuid, type, loc);
+        Entity entity = PatchBukkitEntity.create(entityUuid, type, loc, entityId);
         return entity;
     }
 

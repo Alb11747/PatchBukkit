@@ -114,6 +114,7 @@ public class PatchBukkitPluginManager implements PluginManager {
                 plugin.onLoad();
             } catch (Throwable t) {
                 server.getLogger().log(Level.SEVERE, "Error loading " + plugin.getName(), t);
+                t.printStackTrace();
             }
             registerPlugin(plugin);
             return plugin;
@@ -220,7 +221,11 @@ public class PatchBukkitPluginManager implements PluginManager {
         }
         if (!plugin.isEnabled()) {
             try {
-                plugin.getPluginLoader().enablePlugin(plugin);
+                if (plugin instanceof org.bukkit.plugin.java.JavaPlugin javaPlugin) {
+                    javaPlugin.setEnabled(true);
+                } else {
+                    plugin.getPluginLoader().enablePlugin(plugin);
+                }
             } catch (Throwable ex) {
                 server.getLogger().log(Level.SEVERE, "Error enabling " + plugin.getName() + " (Is it up to date?)", ex);
             }
@@ -234,7 +239,11 @@ public class PatchBukkitPluginManager implements PluginManager {
         }
         if (plugin.isEnabled()) {
             try {
-                plugin.getPluginLoader().disablePlugin(plugin);
+                if (plugin instanceof org.bukkit.plugin.java.JavaPlugin javaPlugin) {
+                    javaPlugin.setEnabled(false);
+                } else {
+                    plugin.getPluginLoader().disablePlugin(plugin);
+                }
             } catch (Throwable ex) {
                 server.getLogger().log(Level.SEVERE, "Error disabling " + plugin.getName(), ex);
             }

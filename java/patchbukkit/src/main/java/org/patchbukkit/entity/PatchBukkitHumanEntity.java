@@ -78,8 +78,12 @@ public class PatchBukkitHumanEntity
     private int sleepTicks = 0;
     private int enchantmentSeed = 0;
 
+    public PatchBukkitHumanEntity(UUID uuid, String name, int entityId) {
+        super(uuid, name, entityId);
+    }
+
     public PatchBukkitHumanEntity(UUID uuid, String name) {
-        super(uuid, name);
+        this(uuid, name, -1);
     }
 
     @Override

@@ -34,10 +34,13 @@ public final class Versioning {
         } catch (final IOException ex) {
             Logger.getLogger(Versioning.class.getName()).log(Level.SEVERE, "Could not get Bukkit version!", ex);
         }
-        BUKKIT_VERSION = bukkitVersion;
         if (apiVersion == null) {
-            apiVersion = "Unknown-Version";
+            apiVersion = "26.3";
         }
+        if (bukkitVersion == null || bukkitVersion.contains(".build.")) {
+            bukkitVersion = apiVersion + "-R0.1-SNAPSHOT";
+        }
+        BUKKIT_VERSION = bukkitVersion;
         API_VERSION = apiVersion;
     }
 

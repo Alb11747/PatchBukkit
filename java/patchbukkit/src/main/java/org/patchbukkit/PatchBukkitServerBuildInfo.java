@@ -35,12 +35,12 @@ public final class PatchBukkitServerBuildInfo implements ServerBuildInfo {
 
     @Override
     public String minecraftVersionId() {
-        return "26.2";
+        return org.patchbukkit.versioning.Versioning.getCurrentApiVersion();
     }
 
     @Override
     public String minecraftVersionName() {
-        return "26.2";
+        return org.patchbukkit.versioning.Versioning.getCurrentApiVersion();
     }
 
     @Override

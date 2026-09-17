@@ -157,7 +157,7 @@ public class PatchBukkitCommandMap extends SimpleCommandMap {
                 java.util.UUID uuid = java.util.UUID.fromString(senderUuid);
                 sender = org.bukkit.Bukkit.getPlayer(uuid);
                 if (sender == null) {
-                    sender = new org.patchbukkit.entity.PatchBukkitPlayer(uuid, senderName != null ? senderName : "Player");
+                    sender = new org.patchbukkit.entity.CraftPlayer(uuid, senderName != null ? senderName : "Player");
                 }
                 if (sender instanceof org.patchbukkit.entity.PatchBukkitPlayer p) {
                     p.setOp(isOp);
@@ -179,7 +179,7 @@ public class PatchBukkitCommandMap extends SimpleCommandMap {
                 java.util.UUID uuid = java.util.UUID.fromString(senderUuid);
                 sender = org.bukkit.Bukkit.getPlayer(uuid);
                 if (sender == null) {
-                    sender = new org.patchbukkit.entity.PatchBukkitPlayer(uuid, senderName != null ? senderName : "Player");
+                    sender = new org.patchbukkit.entity.CraftPlayer(uuid, senderName != null ? senderName : "Player");
                 }
                 if (sender instanceof org.patchbukkit.entity.PatchBukkitPlayer p) {
                     p.setOp(isOp);

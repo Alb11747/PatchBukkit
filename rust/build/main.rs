@@ -5,8 +5,11 @@ pub mod java;
 pub mod protobufs;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    println!("cargo::rerun-if-changed=rust/src/build.rs");
-    println!("cargo::rerun-if-changed=java/build/libs/");
+    println!("cargo::rerun-if-changed=build/main.rs");
+    println!("cargo::rerun-if-changed=build/java.rs");
+    println!("cargo::rerun-if-changed=build/protobufs.rs");
+    println!("cargo::rerun-if-changed=../java/patchbukkit/build/libs/patchbukkit.jar");
+    println!("cargo::rerun-if-changed=resources/jassets/");
     env_logger::init();
 
     let base = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());

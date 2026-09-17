@@ -15,6 +15,7 @@ import java.io.File;
 import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.lang.reflect.Field;
 import java.net.InetAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -159,15 +160,14 @@ import patchbukkit.server.WhitelistEntryProto;
 
 @SuppressWarnings({ "deprecation", "removal", "unchecked" })
 public class PatchBukkitServer implements Server {
+    private static final Logger logger = Logger.getLogger("Minecraft");
     private static volatile PatchBukkitServer INSTANCE;
 
     public PatchBukkitServer() {
         INSTANCE = this;
-        String name = "PatchBukkit";
         try {
-            name = io.papermc.paper.ServerBuildInfo.buildInfo().brandName();
+            this.serverName = io.papermc.paper.ServerBuildInfo.buildInfo().brandName();
         } catch (Throwable ignored) {}
-        this.serverName = name;
         syncServerInfo();
     }
 
@@ -189,19 +189,307 @@ public class PatchBukkitServer implements Server {
             Class<?> bootstrap = Class.forName("net.minecraft.server.Bootstrap");
             bootstrap.getMethod("bootStrap").invoke(null);
         } catch (Throwable ignored) {}
+        ensureGlobalConfiguration();
+        ensureCraftRegistry();
+    }
+
+    public static void ensureGlobalConfiguration() {
+        try {
+            Class<?> globalConfigClass = Class.forName("io.papermc.paper.configuration.GlobalConfiguration");
+            java.lang.reflect.Method getMethod = globalConfigClass.getMethod("get");
+            if (getMethod.invoke(null) != null) {
+                return;
+            }
+
+            // Ensure Minecraft Bootstrap is executed before touching any Paper/Mojang configurations
+            try {
+                Class<?> sharedConstants = Class.forName("net.minecraft.SharedConstants");
+                sharedConstants.getMethod("tryDetectVersion").invoke(null);
+                Class<?> bootstrap = Class.forName("net.minecraft.server.Bootstrap");
+                bootstrap.getMethod("bootStrap").invoke(null);
+            } catch (Throwable ignored) {}
+
+            // 1. Try initializing with PaperConfigurations
+            try {
+                Class<?> paperConfigsClass = Class.forName("io.papermc.paper.configuration.PaperConfigurations");
+                java.nio.file.Path configDir = java.nio.file.Path.of("config");
+                if (!java.nio.file.Files.exists(configDir)) {
+                    java.nio.file.Files.createDirectories(configDir);
+                }
+                Object configs = paperConfigsClass.getConstructor(java.nio.file.Path.class).newInstance(configDir);
+                Class<?> registryAccessClass = Class.forName("net.minecraft.core.RegistryAccess");
+                java.lang.reflect.Field emptyField = registryAccessClass.getField("EMPTY");
+                Object emptyRegistry = emptyField.get(null);
+
+                java.lang.reflect.Method initMethod = paperConfigsClass.getMethod("initializeGlobalConfiguration", registryAccessClass);
+                initMethod.invoke(configs, emptyRegistry);
+            } catch (Throwable t) {
+                // 2. Fallback: instantiate GlobalConfiguration and populate inner configuration parts
+                try {
+                    Object cfg = globalConfigClass.getConstructor().newInstance();
+                    for (java.lang.reflect.Field field : globalConfigClass.getFields()) {
+                        if (!java.lang.reflect.Modifier.isStatic(field.getModifiers()) && field.get(cfg) == null) {
+                            Class<?> fieldType = field.getType();
+                            try {
+                                java.lang.reflect.Constructor<?> ctor = fieldType.getDeclaredConstructor(globalConfigClass);
+                                ctor.setAccessible(true);
+                                field.set(cfg, ctor.newInstance(cfg));
+                            } catch (NoSuchMethodException e) {
+                                try {
+                                    java.lang.reflect.Constructor<?> ctor = fieldType.getDeclaredConstructor();
+                                    ctor.setAccessible(true);
+                                    field.set(cfg, ctor.newInstance());
+                                } catch (Throwable ignored) {}
+                            }
+                        }
+                    }
+                    java.lang.reflect.Method setMethod = globalConfigClass.getDeclaredMethod("set", globalConfigClass);
+                    setMethod.setAccessible(true);
+                    setMethod.invoke(null, cfg);
+                } catch (Throwable t2) {
+                    logger.log(Level.WARNING, "[PatchBukkit] Failed to fallback-initialize GlobalConfiguration", t2);
+                }
+            }
+        } catch (ClassNotFoundException ignored) {
+            // Not a Paper environment
+        } catch (Throwable t) {
+            logger.log(Level.WARNING, "[PatchBukkit] Unexpected error initializing GlobalConfiguration", t);
+        }
+    }
+
+    public static synchronized void ensureCraftRegistry() {
+        try {
+            if (org.bukkit.craftbukkit.CraftRegistry.getMinecraftRegistry() != null) {
+                return;
+            }
+            net.minecraft.core.RegistryAccess.Frozen frozenAccess =
+                net.minecraft.core.RegistryAccess.fromRegistryOfRegistries(net.minecraft.core.registries.BuiltInRegistries.REGISTRY);
+            org.bukkit.craftbukkit.CraftRegistry.setMinecraftRegistry(frozenAccess);
+            return;
+        } catch (IllegalStateException ignored) {
+            return;
+        } catch (Throwable ignored) {}
+
+        try {
+            Class<?> craftRegistryClass = Class.forName("org.bukkit.craftbukkit.CraftRegistry");
+            java.lang.reflect.Method getMinecraftRegistryMethod = craftRegistryClass.getMethod("getMinecraftRegistry");
+            if (getMinecraftRegistryMethod.invoke(null) != null) {
+                return;
+            }
+
+            Class<?> regAccessClass = Class.forName("net.minecraft.core.RegistryAccess");
+            Class<?> builtInRegsClass = Class.forName("net.minecraft.core.registries.BuiltInRegistries");
+            Object rootRegistry = builtInRegsClass.getField("REGISTRY").get(null);
+            Object frozenAccess = regAccessClass.getMethod("fromRegistryOfRegistries", Class.forName("net.minecraft.core.Registry")).invoke(null, rootRegistry);
+            craftRegistryClass.getMethod("setMinecraftRegistry", regAccessClass).invoke(null, frozenAccess);
+        } catch (IllegalStateException ignored) {
+            // Already set by concurrent thread
+        } catch (Throwable t) {
+            if (logger != null) {
+                logger.log(Level.WARNING, "[PatchBukkit] Failed to initialize CraftRegistry", t);
+            } else {
+                System.err.println("[PatchBukkit] Failed to initialize CraftRegistry: " + t.getMessage());
+            }
+        }
+    }
+
+    private static volatile net.minecraft.server.network.ServerConnectionListener SERVER_CONNECTION;
+    private static volatile net.minecraft.server.dedicated.DedicatedServer DEDICATED_SERVER;
+    private static volatile net.minecraft.server.dedicated.DedicatedPlayerList DEDICATED_PLAYER_LIST;
+    private static volatile org.bukkit.craftbukkit.CraftServer CRAFT_SERVER;
+
+    public static net.minecraft.server.network.ServerConnectionListener getServerConnection() {
+        if (SERVER_CONNECTION == null) {
+            initMinecraftServerInstances();
+        }
+        return SERVER_CONNECTION;
+    }
+
+    public static net.minecraft.server.dedicated.DedicatedServer getDedicatedServer() {
+        if (DEDICATED_SERVER == null) {
+            initMinecraftServerInstances();
+        }
+        return DEDICATED_SERVER;
+    }
+
+    public static net.minecraft.server.dedicated.DedicatedPlayerList getDedicatedPlayerList() {
+        if (DEDICATED_PLAYER_LIST == null) {
+            initMinecraftServerInstances();
+        }
+        return DEDICATED_PLAYER_LIST;
+    }
+
+    public static org.bukkit.craftbukkit.CraftServer getCraftServer() {
+        if (CRAFT_SERVER == null) {
+            initMinecraftServerInstances();
+        }
+        return CRAFT_SERVER;
+    }
+
+    private static synchronized void initMinecraftServerInstances() {
+        if (SERVER_CONNECTION != null) return;
+        try {
+            ensureGlobalConfiguration();
+            ensureCraftRegistry();
+
+            Field unsafeField = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+            unsafeField.setAccessible(true);
+            sun.misc.Unsafe unsafe = (sun.misc.Unsafe) unsafeField.get(null);
+
+            Class<?> dsClass = Class.forName("net.minecraft.server.dedicated.DedicatedServer");
+            DEDICATED_SERVER = (net.minecraft.server.dedicated.DedicatedServer) unsafe.allocateInstance(dsClass);
+            SERVER_CONNECTION = new net.minecraft.server.network.ServerConnectionListener(DEDICATED_SERVER);
+
+            for (Field f : net.minecraft.server.MinecraftServer.class.getDeclaredFields()) {
+                if (f.getType().equals(net.minecraft.server.network.ServerConnectionListener.class)) {
+                    f.setAccessible(true);
+                    f.set(DEDICATED_SERVER, SERVER_CONNECTION);
+                    break;
+                }
+            }
+
+            // Set static MinecraftServer.SERVER singleton
+            for (Field f : net.minecraft.server.MinecraftServer.class.getDeclaredFields()) {
+                if (java.lang.reflect.Modifier.isStatic(f.getModifiers()) && net.minecraft.server.MinecraftServer.class.isAssignableFrom(f.getType())) {
+                    try {
+                        unsafe.putObject(unsafe.staticFieldBase(f), unsafe.staticFieldOffset(f), DEDICATED_SERVER);
+                    } catch (Throwable t) {
+                        try {
+                            f.setAccessible(true);
+                            f.set(null, DEDICATED_SERVER);
+                        } catch (Throwable ignored) {}
+                    }
+                }
+            }
+
+            Class<?> plClass = Class.forName("net.minecraft.server.dedicated.DedicatedPlayerList");
+            DEDICATED_PLAYER_LIST = (net.minecraft.server.dedicated.DedicatedPlayerList) unsafe.allocateInstance(plClass);
+
+            Field playersField = null;
+            Field playersByUUIDField = null;
+            Class<?> cur = DEDICATED_PLAYER_LIST.getClass();
+            while (cur != null) {
+                for (Field f : cur.getDeclaredFields()) {
+                    if (f.getName().equals("players")) {
+                        playersField = f;
+                    } else if (f.getName().equals("playersByUUID")) {
+                        playersByUUIDField = f;
+                    }
+                }
+                cur = cur.getSuperclass();
+            }
+            if (playersField != null) {
+                playersField.setAccessible(true);
+                playersField.set(DEDICATED_PLAYER_LIST, new java.util.concurrent.CopyOnWriteArrayList<>());
+            }
+            if (playersByUUIDField != null) {
+                playersByUUIDField.setAccessible(true);
+                playersByUUIDField.set(DEDICATED_PLAYER_LIST, new java.util.concurrent.ConcurrentHashMap<>());
+            }
+
+            for (Field f : net.minecraft.server.MinecraftServer.class.getDeclaredFields()) {
+                if (net.minecraft.server.players.PlayerList.class.isAssignableFrom(f.getType())) {
+                    f.setAccessible(true);
+                    f.set(DEDICATED_SERVER, DEDICATED_PLAYER_LIST);
+                    break;
+                }
+            }
+
+            Class<?> pldClass = Class.forName("net.minecraft.world.level.storage.PrimaryLevelData");
+            net.minecraft.world.level.storage.PrimaryLevelData pld = (net.minecraft.world.level.storage.PrimaryLevelData) unsafe.allocateInstance(pldClass);
+            for (Field f : pldClass.getDeclaredFields()) {
+                try {
+                    f.setAccessible(true);
+                    if (f.getName().equals("respawnDimension")) {
+                        f.set(pld, net.minecraft.world.level.Level.OVERWORLD);
+                    } else if (f.getName().equals("respawnData")) {
+                        f.set(pld, net.minecraft.world.level.storage.LevelData.RespawnData.DEFAULT);
+                    }
+                } catch (Throwable ignored) {}
+            }
+
+            for (Field f : net.minecraft.server.MinecraftServer.class.getDeclaredFields()) {
+                try {
+                    f.setAccessible(true);
+                    if (f.getName().equals("worldData") || net.minecraft.world.level.storage.WorldData.class.isAssignableFrom(f.getType())) {
+                        f.set(DEDICATED_SERVER, pld);
+                    } else if (f.getName().equals("effectiveRespawnData") || f.getType().equals(net.minecraft.world.level.storage.LevelData.RespawnData.class)) {
+                        f.set(DEDICATED_SERVER, net.minecraft.world.level.storage.LevelData.RespawnData.DEFAULT);
+                    } else if (f.getName().equals("levels")) {
+                        f.set(DEDICATED_SERVER, new java.util.HashMap<>());
+                    }
+                } catch (Throwable ignored) {}
+            }
+
+            Class<?> csClass = Class.forName("org.bukkit.craftbukkit.CraftServer");
+            CRAFT_SERVER = (org.bukkit.craftbukkit.CraftServer) unsafe.allocateInstance(csClass);
+            for (Field f : csClass.getDeclaredFields()) {
+                try {
+                    f.setAccessible(true);
+                    if (f.getName().equals("console")) {
+                        f.set(CRAFT_SERVER, DEDICATED_SERVER);
+                    } else if (f.getName().equals("playerList")) {
+                        f.set(CRAFT_SERVER, DEDICATED_PLAYER_LIST);
+                    } else if (f.getName().equals("serverName")) {
+                        f.set(CRAFT_SERVER, "Paper");
+                    } else if (f.getName().equals("serverVersion")) {
+                        f.set(CRAFT_SERVER, org.patchbukkit.versioning.Versioning.getBukkitVersion());
+                    } else if (f.getName().equals("bukkitVersion")) {
+                        f.set(CRAFT_SERVER, org.patchbukkit.versioning.Versioning.getBukkitVersion());
+                    } else if (f.getName().equals("logger")) {
+                        f.set(CRAFT_SERVER, logger);
+                    } else if (f.getName().equals("worlds")) {
+                        f.set(CRAFT_SERVER, new java.util.concurrent.ConcurrentHashMap<>());
+                    } else if (f.getName().equals("offlinePlayers")) {
+                        f.set(CRAFT_SERVER, new java.util.concurrent.ConcurrentHashMap<>());
+                    }
+                } catch (Throwable ignored) {}
+            }
+
+            for (Field f : net.minecraft.server.MinecraftServer.class.getDeclaredFields()) {
+                if (f.getName().equals("server") || f.getType().getName().contains("CraftServer")) {
+                    f.setAccessible(true);
+                    f.set(DEDICATED_SERVER, CRAFT_SERVER);
+                    break;
+                }
+            }
+        } catch (Throwable t) {
+            logger.log(Level.WARNING, "[PatchBukkit] Failed to initialize DedicatedServer instances", t);
+        }
     }
 
     public static PatchBukkitServer initServer() {
+        ensureGlobalConfiguration();
+        ensureCraftRegistry();
+        getServerConnection();
         Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
             logger.log(Level.SEVERE, "Uncaught exception in thread " + thread.getName(), throwable);
         });
         PatchBukkitServer server = getInstance();
-        org.bukkit.Bukkit.setServer(server);
+        if (org.bukkit.Bukkit.getServer() == null) {
+            org.bukkit.Bukkit.setServer(server);
+        }
         return server;
     }
 
-    private final String serverName;
-    private final String bukkitVersion = Versioning.getBukkitVersion();
+    public final net.minecraft.server.dedicated.DedicatedServer console = getDedicatedServer();
+
+    public net.minecraft.server.dedicated.DedicatedServer getServer() {
+        return console;
+    }
+
+    public net.minecraft.server.dedicated.DedicatedPlayerList getHandle() {
+        return getDedicatedPlayerList();
+    }
+
+    public net.minecraft.server.network.ServerConnectionListener getConnection() {
+        return getServerConnection();
+    }
+
+    private String serverName = "Pumpkin";
+    private String bukkitVersion = Versioning.getBukkitVersion();
+    private String minecraftVersion = Versioning.getCurrentApiVersion();
+    private String serverVersion = "git-Paper-117 (MC: " + this.minecraftVersion + ")";
     public SimpleCommandMap commandMap = new PatchBukkitCommandMap(this);
     public BukkitScheduler scheduler = new PatchBukkitScheduler();
     public PatchBukkitPluginManager pluginManager = new PatchBukkitPluginManager(this);
@@ -315,6 +603,18 @@ public class PatchBukkitServer implements Server {
         try {
             ServerInfoResponse info = NativeBridgeFfi.getServerInfo(EmptyRequest.getDefaultInstance());
             if (info != null) {
+                if (info.getServerName() != null && !info.getServerName().isEmpty()) {
+                    this.serverName = info.getServerName();
+                }
+                if (info.getBukkitVersion() != null && !info.getBukkitVersion().isEmpty()) {
+                    this.bukkitVersion = info.getBukkitVersion();
+                }
+                if (info.getMinecraftVersion() != null && !info.getMinecraftVersion().isEmpty()) {
+                    this.minecraftVersion = info.getMinecraftVersion();
+                }
+                if (info.getVersion() != null && !info.getVersion().isEmpty()) {
+                    this.serverVersion = "git-Paper-" + info.getVersion() + " (MC: " + this.minecraftVersion + ")";
+                }
                 this.motd = info.getMotd();
                 this.ip = info.getIp();
                 this.port = info.getPort();
@@ -379,14 +679,20 @@ public class PatchBukkitServer implements Server {
         } catch (Throwable ignored) {}
     }
 
-    private static final PrintStream ORIGINAL_OUT = System.out;
-    private static final PrintStream ORIGINAL_ERR = System.err;
+    public static final PrintStream ORIGINAL_OUT = System.out;
+    public static final PrintStream ORIGINAL_ERR = System.err;
     private static final ThreadLocal<Boolean> IN_LOGGING = ThreadLocal.withInitial(() -> Boolean.FALSE);
 
-    private static final Logger logger = Logger.getLogger("Minecraft");
+    public static boolean isLogging() {
+        return IN_LOGGING.get();
+    }
+
+    public static void setLogging(boolean logging) {
+        IN_LOGGING.set(logging);
+    }
 
     static {
-        configureRootLogger();
+        configureLogging();
     }
 
     public static final Map<Level, LogLevel> LEVEL_MAP = Map.of(
@@ -399,29 +705,57 @@ public class PatchBukkitServer implements Server {
             Level.FINEST,  LogLevel.FINEST
     );
 
-    private static void configureRootLogger() {
+    private static void configureLogging() {
+        configureLog4j();
+        configureJulLogger();
+        redirectSystemStreams();
+    }
+
+    private static void configureLog4j() {
+        try {
+            org.apache.logging.log4j.core.LoggerContext context =
+                    (org.apache.logging.log4j.core.LoggerContext) org.apache.logging.log4j.LogManager.getContext(false);
+            org.apache.logging.log4j.core.config.Configuration config = context.getConfiguration();
+
+            org.patchbukkit.log.NativeBridgeLog4jAppender appender =
+                    org.patchbukkit.log.NativeBridgeLog4jAppender.create("NativeBridge");
+            appender.start();
+            config.addAppender(appender);
+
+            org.apache.logging.log4j.core.config.LoggerConfig rootConfig = config.getRootLogger();
+            rootConfig.removeAppender("TerminalConsole");
+            rootConfig.removeAppender("ServerGuiConsole");
+            rootConfig.removeAppender("Async");
+
+            rootConfig.addAppender(appender, org.apache.logging.log4j.Level.ALL, null);
+            rootConfig.setLevel(org.apache.logging.log4j.Level.ALL);
+            context.updateLoggers();
+        } catch (Throwable t) {
+            ORIGINAL_ERR.println("[PatchBukkit] Failed to initialize Log4j native bridge appender: " + t.getMessage());
+        }
+    }
+
+    private static void configureJulLogger() {
         Logger root = Logger.getLogger("");
         root.setUseParentHandlers(false);
         for (java.util.logging.Handler h : root.getHandlers()) {
             root.removeHandler(h);
         }
         root.setLevel(Level.ALL);
-        root.addHandler(new java.util.logging.Handler() {
-            @Override
-            public void publish(java.util.logging.LogRecord record) {
-                if (record == null) return;
-                if (IN_LOGGING.get()) return;
-                IN_LOGGING.set(true);
-                try {
-                    LogLevel logLevel = LEVEL_MAP.getOrDefault(record.getLevel(), LogLevel.INFO);
-                    String message = formatLogRecord(record);
-                    String loggerName = record.getLoggerName() != null ? record.getLoggerName() : "";
-                    if (loggerName.startsWith("jdk.") || loggerName.startsWith("sun.") || loggerName.startsWith("java.") || loggerName.startsWith("javax.")) {
-                        if (record.getLevel().intValue() < Level.WARNING.intValue()) {
-                            return;
-                        }
-                    }
+        try {
+            root.addHandler(new org.bukkit.craftbukkit.util.ForwardLogHandler());
+        } catch (Throwable t) {
+            ORIGINAL_ERR.println("[PatchBukkit] Failed to install ForwardLogHandler, using fallback: " + t.getMessage());
+            root.addHandler(new java.util.logging.Handler() {
+                @Override
+                public void publish(java.util.logging.LogRecord record) {
+                    if (record == null) return;
+                    if (IN_LOGGING.get()) return;
+                    IN_LOGGING.set(true);
                     try {
+                        LogLevel logLevel = LEVEL_MAP.getOrDefault(record.getLevel(), LogLevel.INFO);
+                        String message = formatLogRecord(record);
+                        String loggerName = record.getLoggerName() != null ? record.getLoggerName() : "";
                         NativeBridgeFfi.sendLog(
                                 SendLogRequest.newBuilder()
                                         .setLevel(logLevel)
@@ -429,20 +763,15 @@ public class PatchBukkitServer implements Server {
                                         .setLoggerName(loggerName)
                                         .build()
                         );
-                    } catch (Throwable t) {
-                        ORIGINAL_ERR.println("[" + record.getLevel() + "][" + loggerName + "] " + message);
+                    } catch (Throwable ignored) {
+                    } finally {
+                        IN_LOGGING.set(false);
                     }
-                } catch (Throwable t) {
-                    ORIGINAL_ERR.println("[RootLogger Error] Failed to publish record: " + t.getMessage());
-                } finally {
-                    IN_LOGGING.set(false);
                 }
-            }
-            @Override public void flush() {}
-            @Override public void close() {}
-        });
-
-        redirectSystemStreams();
+                @Override public void flush() {}
+                @Override public void close() {}
+            });
+        }
     }
 
     public static String formatLogRecord(java.util.logging.LogRecord record) {
@@ -475,8 +804,8 @@ public class PatchBukkitServer implements Server {
 
     private static void redirectSystemStreams() {
         try {
-            System.setOut(new LoggingPrintStream(ORIGINAL_OUT, Level.INFO, "System.out"));
-            System.setErr(new LoggingPrintStream(ORIGINAL_ERR, Level.SEVERE, "System.err"));
+            System.setOut(new LoggingPrintStream(ORIGINAL_OUT, Level.INFO, "STDOUT"));
+            System.setErr(new LoggingPrintStream(ORIGINAL_ERR, Level.SEVERE, "STDERR"));
         } catch (Throwable t) {
             ORIGINAL_ERR.println("[PatchBukkit] Failed to redirect System streams: " + t.getMessage());
         }
@@ -525,8 +854,17 @@ public class PatchBukkitServer implements Server {
             if (line.isEmpty() || IN_LOGGING.get()) return;
             IN_LOGGING.set(true);
             try {
-                LogLevel logLevel = LEVEL_MAP.getOrDefault(level, LogLevel.INFO);
+                org.apache.logging.log4j.Logger log4jLogger = org.apache.logging.log4j.LogManager.getLogger(loggerName);
+                if (level == Level.SEVERE) {
+                    log4jLogger.error(line);
+                } else if (level == Level.WARNING) {
+                    log4jLogger.warn(line);
+                } else {
+                    log4jLogger.info(line);
+                }
+            } catch (Throwable t) {
                 try {
+                    LogLevel logLevel = LEVEL_MAP.getOrDefault(level, LogLevel.INFO);
                     NativeBridgeFfi.sendLog(
                             SendLogRequest.newBuilder()
                                     .setLevel(logLevel)
@@ -547,9 +885,13 @@ public class PatchBukkitServer implements Server {
     }
 
     public static void registerPlayer(String uuidStr, String name, boolean isOp) {
+        registerPlayer(uuidStr, name, isOp, -1);
+    }
+
+    public static void registerPlayer(String uuidStr, String name, boolean isOp, int entityId) {
         try {
             UUID uuid = UUID.fromString(uuidStr);
-            PatchBukkitPlayer player = new PatchBukkitPlayer(uuid, name);
+            PatchBukkitPlayer player = new org.patchbukkit.entity.CraftPlayer(uuid, name, entityId);
             if (isOp) {
                 player.setOp(true);
             }
@@ -635,7 +977,7 @@ public class PatchBukkitServer implements Server {
 
     @Override
     public @NotNull String getVersion() {
-        return "26.2";
+        return this.serverVersion;
     }
 
     @Override
@@ -645,11 +987,7 @@ public class PatchBukkitServer implements Server {
 
     @Override
     public @NotNull String getMinecraftVersion() {
-        String version = this.bukkitVersion;
-        if (version != null && version.contains("-")) {
-            return version.split("-")[0];
-        }
-        return version != null && !version.equals("Unknown-Version") ? version : "1.21.4";
+        return this.minecraftVersion;
     }
 
     @Override

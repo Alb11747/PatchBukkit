@@ -44,9 +44,31 @@ public class PatchBukkitRegistryAccess extends io.papermc.paper.registry.PaperRe
         return this.getRegistry(registryKey);
     }
 
+    @Override
+    public <M> void lockReferenceHolders(final net.minecraft.resources.ResourceKey<? extends net.minecraft.core.Registry<M>> resourceKey) {
+        try {
+            final var entry = io.papermc.paper.registry.PaperRegistries.getEntry(resourceKey);
+            if (entry != null) {
+                Registry<?> reg = super.getRegistry(entry.apiKey());
+                if (reg instanceof org.bukkit.craftbukkit.CraftRegistry<?, ?> craftRegistry) {
+                    craftRegistry.lockReferenceHolders();
+                }
+            }
+        } catch (Throwable ignored) {}
+    }
+
     @SuppressWarnings({"unchecked", "rawtypes"})
     public <T extends Keyed> Registry<T> getRegistry(RegistryKey<T> registryKey) {
         if (registryKey == null) return null;
+
+        if (!FACTORIES.containsKey(registryKey) && !RegistryKey.ITEM.equals(registryKey) && !RegistryKey.BLOCK.equals(registryKey) && !RegistryKey.DAMAGE_TYPE.equals(registryKey)) {
+            try {
+                Registry<T> superReg = super.getRegistry(registryKey);
+                if (superReg != null) {
+                    return superReg;
+                }
+            } catch (Throwable ignored) {}
+        }
 
         Registry<?> existing = instances.get(registryKey);
         if (existing != null) {

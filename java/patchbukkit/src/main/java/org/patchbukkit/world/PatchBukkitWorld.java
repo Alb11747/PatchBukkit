@@ -129,14 +129,14 @@ public class PatchBukkitWorld extends PatchBukkitRegionAccessor implements World
         }
     };
 
-    private PatchBukkitWorld(UUID uuid) {
+    protected PatchBukkitWorld(UUID uuid) {
         this.uuid = uuid;
         initDefaultGameRules();
         syncWorldInfo();
     }
 
     public static PatchBukkitWorld getOrCreate(UUID uuid) {
-        return instances.computeIfAbsent(uuid, PatchBukkitWorld::new);
+        return instances.computeIfAbsent(uuid, org.patchbukkit.CraftWorld::new);
     }
 
     public static PatchBukkitWorld getOrCreate(String uuid) {
@@ -353,6 +353,7 @@ public class PatchBukkitWorld extends PatchBukkitRegionAccessor implements World
     @Override
     public @NotNull Item dropItem(@NotNull Location loc, @NotNull ItemStack item, @Nullable Consumer<? super Item> function) {
         UUID entityUuid = UUID.randomUUID();
+        int entityId = -1;
         try {
             var res = NativeBridgeFfi.spawnWorldEntity(SpawnWorldEntityRequest.newBuilder()
                 .setWorldUuid(BridgeUtils.convertUuid(this.uuid))
@@ -361,12 +362,17 @@ public class PatchBukkitWorld extends PatchBukkitRegionAccessor implements World
                 .setY(loc.getY())
                 .setZ(loc.getZ())
                 .build());
-            if (res != null && res.hasEntityUuid()) {
-                entityUuid = UUID.fromString(res.getEntityUuid().getValue());
+            if (res != null) {
+                if (res.hasEntityUuid()) {
+                    entityUuid = UUID.fromString(res.getEntityUuid().getValue());
+                }
+                if (res.getEntityId() > 0) {
+                    entityId = res.getEntityId();
+                }
             }
         } catch (Throwable ignored) {}
 
-        Item itemEntity = (Item) PatchBukkitEntity.create(entityUuid, EntityType.ITEM, loc);
+        Item itemEntity = (Item) PatchBukkitEntity.create(entityUuid, EntityType.ITEM, loc, entityId);
         if (function != null) {
             function.accept(itemEntity);
         }
@@ -403,6 +409,7 @@ public class PatchBukkitWorld extends PatchBukkitRegionAccessor implements World
     @Override
     public @NotNull LightningStrike strikeLightning(@NotNull Location loc) {
         UUID entityUuid = UUID.randomUUID();
+        int entityId = -1;
         try {
             var res = NativeBridgeFfi.spawnWorldEntity(SpawnWorldEntityRequest.newBuilder()
                 .setWorldUuid(BridgeUtils.convertUuid(this.uuid))
@@ -411,12 +418,17 @@ public class PatchBukkitWorld extends PatchBukkitRegionAccessor implements World
                 .setY(loc.getY())
                 .setZ(loc.getZ())
                 .build());
-            if (res != null && res.hasEntityUuid()) {
-                entityUuid = UUID.fromString(res.getEntityUuid().getValue());
+            if (res != null) {
+                if (res.hasEntityUuid()) {
+                    entityUuid = UUID.fromString(res.getEntityUuid().getValue());
+                }
+                if (res.getEntityId() > 0) {
+                    entityId = res.getEntityId();
+                }
             }
         } catch (Throwable ignored) {}
 
-        LightningStrike bolt = (LightningStrike) PatchBukkitEntity.create(entityUuid, EntityType.LIGHTNING_BOLT, loc);
+        LightningStrike bolt = (LightningStrike) PatchBukkitEntity.create(entityUuid, EntityType.LIGHTNING_BOLT, loc, entityId);
         registerEntity(bolt);
         return bolt;
     }
@@ -458,7 +470,7 @@ public class PatchBukkitWorld extends PatchBukkitRegionAccessor implements World
                                 type = EntityType.valueOf(summary.getEntityType());
                             } catch (Throwable ignored) {}
                             Location loc = new Location(this, summary.getX(), summary.getY(), summary.getZ(), summary.getYaw(), summary.getPitch());
-                            Entity e = PatchBukkitEntity.create(u, type, loc);
+                            Entity e = PatchBukkitEntity.create(u, type, loc, summary.getEntityId());
                             list.add(e);
                         }
                     }
@@ -1591,6 +1603,11 @@ public class PatchBukkitWorld extends PatchBukkitRegionAccessor implements World
     }
 
     @Override
+    public <T> void spawnParticle(@NotNull Particle particle, @Nullable List<Player> receivers, @Nullable Player source, double x, double y, double z, int count, double offsetX, double offsetY, double offsetZ, double extra, double xSpread, double ySpread, @Nullable T data, boolean force, @NotNull Particle.RandomizationType randomizationType) {
+        spawnParticle(particle, x, y, z, count, offsetX, offsetY, offsetZ, extra, data, force);
+    }
+
+    @Override
     public void playSound(@NotNull Entity entity, @NotNull Sound sound, @NotNull SoundCategory category, float volume, float pitch) {
         playSound(entity.getLocation(), sound, category, volume, pitch);
     }
@@ -1721,6 +1738,22 @@ public class PatchBukkitWorld extends PatchBukkitRegionAccessor implements World
                 return e;
             }
         }
+        return null;
+    }
+
+    public @Nullable Entity getEntity(int entityId) {
+        for (Entity e : getEntities()) {
+            if (e.getEntityId() == entityId) {
+                return e;
+            }
+        }
+        try {
+            var resp = NativeBridgeFfi.getEntityUuid(patchbukkit.entity.GetEntityUuidRequest.newBuilder().setEntityId(entityId).build());
+            if (resp != null && resp.hasUuid()) {
+                UUID u = UUID.fromString(resp.getUuid().getValue());
+                return getEntity(u);
+            }
+        } catch (Throwable ignored) {}
         return null;
     }
 

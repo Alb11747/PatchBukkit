@@ -8,6 +8,7 @@ use crate::{
         common::Uuid,
         entity::{
             DamageEntityRequest, EntityHealthResponse, GetCooldownRequest, GetCooldownResponse,
+            GetEntityIdResponse, GetEntityUuidRequest, GetEntityUuidResponse,
             GetExperienceResponse, GetFoodLevelResponse, GetPlayerPoseStateResponse,
             KickPlayerRequest, PlayerConnectionInfoResponse, SendActionBarRequest,
             SendBlockChangeRequest, SendGameEventRequest, SendResourcePackRequest,
@@ -30,6 +31,54 @@ pub fn ffi_native_bridge_get_entity_health_impl(request: Uuid) -> Option<EntityH
             max_health: 20.0,
         }
     })
+}
+
+pub fn ffi_native_bridge_get_entity_id_impl(request: Uuid) -> Option<GetEntityIdResponse> {
+    if let Some(id) = with_player(Some(&request), |player| {
+        player.living_entity.entity.entity_id
+    }) {
+        return Some(GetEntityIdResponse { entity_id: id });
+    }
+
+    let ctx = CALLBACK_CONTEXT.get()?;
+    let uuid_str = &request.value;
+    let uuid = uuid::Uuid::parse_str(uuid_str).ok()?;
+
+    for world in ctx.plugin_context.server.worlds.load().iter() {
+        if let Some(entity) = world.get_entity_by_uuid(uuid) {
+            return Some(GetEntityIdResponse {
+                entity_id: entity.get_entity().entity_id,
+            });
+        }
+    }
+
+    None
+}
+
+pub fn ffi_native_bridge_get_entity_uuid_impl(
+    request: GetEntityUuidRequest,
+) -> Option<GetEntityUuidResponse> {
+    let ctx = CALLBACK_CONTEXT.get()?;
+    let id = request.entity_id;
+
+    for world in ctx.plugin_context.server.worlds.load().iter() {
+        if let Some(player) = world.get_player_by_id(id) {
+            return Some(GetEntityUuidResponse {
+                uuid: Some(Uuid {
+                    value: player.gameprofile.id.to_string(),
+                }),
+            });
+        }
+        if let Some(entity) = world.get_entity_by_id(id) {
+            return Some(GetEntityUuidResponse {
+                uuid: Some(Uuid {
+                    value: entity.get_entity().entity_uuid.to_string(),
+                }),
+            });
+        }
+    }
+
+    None
 }
 
 pub fn ffi_native_bridge_set_entity_health_impl(request: SetEntityHealthRequest) -> Option<()> {

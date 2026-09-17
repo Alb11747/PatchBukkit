@@ -3730,6 +3730,7 @@ impl PatchBukkitEvent for pumpkin::plugin::player::player_join::PlayerJoinEvent 
                         value: self.player.gameprofile.id.to_string(),
                     }),
                     join_message: serde_json::to_string(&self.join_message).unwrap_or_default(),
+                    entity_id: self.player.living_entity.entity.entity_id,
                 })),
             },
             context: EventContext {
