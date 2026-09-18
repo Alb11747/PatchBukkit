@@ -71,8 +71,13 @@ public class PatchBukkitUnsafeValues implements UnsafeValues {
     public boolean isSupportedApiVersion(String apiVersion) {
         if (apiVersion == null) return false;
         final ApiVersion toCheck = ApiVersion.getOrCreateVersion(apiVersion);
-        var minimumApi = NativeBridgeFfi.getPatchBukkitConfig(EmptyRequest.newBuilder().build()).getMinimumSupportedPluginApi();
-        final ApiVersion minimumVersion = ApiVersion.getOrCreateVersion(minimumApi);
+        String minimumApi = null;
+        try {
+            minimumApi = NativeBridgeFfi.getPatchBukkitConfig(EmptyRequest.newBuilder().build()).getMinimumSupportedPluginApi();
+        } catch (Throwable ignored) {}
+        final ApiVersion minimumVersion = (minimumApi == null || minimumApi.isEmpty() || "0.0.0".equals(minimumApi))
+                ? ApiVersion.getOrCreateVersion("1.13")
+                : ApiVersion.getOrCreateVersion(minimumApi);
 
         return !toCheck.isNewerThan(ApiVersion.CURRENT) && !toCheck.isOlderThan(minimumVersion);
     }

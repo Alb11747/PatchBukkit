@@ -312,7 +312,9 @@ pub fn ffi_native_bridge_get_ban_list_impl(
         if let Ok(list) = ctx.plugin_context.server.data.banned_ip_list.try_read() {
             for entry in &list.banned_ips {
                 let created = entry.created.unix_timestamp();
-                let expires = entry.expires.map(|e| e.unix_timestamp()).unwrap_or(0);
+                let expires = entry
+                    .expires
+                    .map_or(0, time::OffsetDateTime::unix_timestamp);
                 entries.push(BanEntryProto {
                     target: entry.ip.to_string(),
                     source: entry.source.clone(),
@@ -322,19 +324,19 @@ pub fn ffi_native_bridge_get_ban_list_impl(
                 });
             }
         }
-    } else {
-        if let Ok(list) = ctx.plugin_context.server.data.banned_player_list.try_read() {
-            for entry in &list.banned_players {
-                let created = entry.created.unix_timestamp();
-                let expires = entry.expires.map(|e| e.unix_timestamp()).unwrap_or(0);
-                entries.push(BanEntryProto {
-                    target: entry.name.clone(),
-                    source: entry.source.clone(),
-                    created,
-                    expires,
-                    reason: entry.reason.clone(),
-                });
-            }
+    } else if let Ok(list) = ctx.plugin_context.server.data.banned_player_list.try_read() {
+        for entry in &list.banned_players {
+            let created = entry.created.unix_timestamp();
+            let expires = entry
+                .expires
+                .map_or(0, time::OffsetDateTime::unix_timestamp);
+            entries.push(BanEntryProto {
+                target: entry.name.clone(),
+                source: entry.source.clone(),
+                created,
+                expires,
+                reason: entry.reason.clone(),
+            });
         }
     }
 

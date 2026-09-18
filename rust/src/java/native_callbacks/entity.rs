@@ -154,7 +154,6 @@ pub fn ffi_native_bridge_teleport_entity_impl(request: TeleportEntityRequest) ->
     with_player(request.uuid.as_ref(), |player| {
         let position = pumpkin_util::math::vector3::Vector3::new(pos.x, pos.y, pos.z);
         let world = player.living_entity.entity.world.load_full();
-        let player = player.clone();
         ctx.runtime.spawn(async move {
             player.teleport(position, Some(yaw), Some(pitch), world);
         });
@@ -367,7 +366,6 @@ pub fn ffi_native_bridge_set_player_list_header_footer_impl(
     with_player(request.uuid.as_ref(), |player| {
         let header = request.header;
         let footer = request.footer;
-        let player = player.clone();
         ctx.runtime.spawn(async move {
             let h = pumpkin_util::text::TextComponent::from_legacy_string(&header);
             let f = pumpkin_util::text::TextComponent::from_legacy_string(&footer);
@@ -430,7 +428,6 @@ pub fn ffi_native_bridge_set_player_time_impl(request: SetPlayerTimeRequest) -> 
     with_player(request.uuid.as_ref(), |player| {
         let time = request.time;
         let relative = request.relative;
-        let player = player.clone();
         ctx.runtime.spawn(async move {
             let packet = pumpkin_protocol::java::client::play::CUpdateTime::new(0, time, relative);
             player.send_client_packet(&packet).await;
@@ -441,7 +438,6 @@ pub fn ffi_native_bridge_set_player_time_impl(request: SetPlayerTimeRequest) -> 
 pub fn ffi_native_bridge_reset_player_time_impl(request: Uuid) -> Option<()> {
     let ctx = CALLBACK_CONTEXT.get()?;
     with_player(Some(&request), |player| {
-        let player = player.clone();
         ctx.runtime.spawn(async move {
             let world_time = player
                 .world()
@@ -461,7 +457,6 @@ pub fn ffi_native_bridge_set_player_weather_impl(request: SetPlayerWeatherReques
     let ctx = CALLBACK_CONTEXT.get()?;
     with_player(request.uuid.as_ref(), |player| {
         let weather = request.weather;
-        let player = player.clone();
         ctx.runtime.spawn(async move {
             let event = if weather == 1 {
                 pumpkin_protocol::java::client::play::GameEvent::BeginRaining
@@ -477,7 +472,6 @@ pub fn ffi_native_bridge_set_player_weather_impl(request: SetPlayerWeatherReques
 pub fn ffi_native_bridge_reset_player_weather_impl(request: Uuid) -> Option<()> {
     let ctx = CALLBACK_CONTEXT.get()?;
     with_player(Some(&request), |player| {
-        let player = player.clone();
         ctx.runtime.spawn(async move {
             let is_raining = player.world().is_raining();
             let event = if is_raining {
@@ -495,7 +489,6 @@ pub fn ffi_native_bridge_set_compass_target_impl(request: SetCompassTargetReques
     let ctx = CALLBACK_CONTEXT.get()?;
     let pos = request.position?;
     with_player(request.uuid.as_ref(), |player| {
-        let player = player.clone();
         ctx.runtime.spawn(async move {
             let block_pos = pumpkin_util::math::position::BlockPos::new(
                 pos.x as i32,
@@ -609,7 +602,6 @@ pub fn ffi_native_bridge_stop_sound_impl(request: StopSoundRequest) -> Option<()
 pub fn ffi_native_bridge_send_block_change_impl(request: SendBlockChangeRequest) -> Option<()> {
     let ctx = CALLBACK_CONTEXT.get()?;
     with_player(request.uuid.as_ref(), |player| {
-        let player = player.clone();
         let pos = pumpkin_util::math::position::BlockPos::new(request.x, request.y, request.z);
         let state_str = request.block_state;
         let clean_key = state_str
@@ -635,7 +627,6 @@ pub fn ffi_native_bridge_send_block_change_impl(request: SendBlockChangeRequest)
 pub fn ffi_native_bridge_send_resource_pack_impl(request: SendResourcePackRequest) -> Option<()> {
     let ctx = CALLBACK_CONTEXT.get()?;
     with_player(request.uuid.as_ref(), |player| {
-        let player = player.clone();
         let url = request.url;
         let prompt = request.prompt;
         let required = request.required;
@@ -678,7 +669,6 @@ pub fn ffi_native_bridge_get_player_connection_info_impl(
 pub fn ffi_native_bridge_send_game_event_impl(request: SendGameEventRequest) -> Option<()> {
     let ctx = CALLBACK_CONTEXT.get()?;
     with_player(request.uuid.as_ref(), |player| {
-        let player = player.clone();
         let event_type = request.event_type as u8;
         let value = request.value;
         ctx.runtime.spawn(async move {

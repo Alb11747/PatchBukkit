@@ -6605,6 +6605,14 @@ where
         }
 
         Box::pin(async move {
+            if let Some(ctx) = crate::java::native_callbacks::CALLBACK_CONTEXT.get() {
+                if ctx.config.diagnostics.debug_bridge {
+                    tracing::debug!(
+                        "Dispatching async event to JVM worker for plugin {}",
+                        self.plugin_name
+                    );
+                }
+            }
             let (tx, rx) = oneshot::channel();
             if let Err(e) = command_tx
                 .send(JvmCommand::FireEvent {
@@ -6634,6 +6642,14 @@ where
         }
 
         Box::pin(async move {
+            if let Some(ctx) = crate::java::native_callbacks::CALLBACK_CONTEXT.get() {
+                if ctx.config.diagnostics.debug_bridge {
+                    tracing::debug!(
+                        "Dispatching blocking event to JVM worker for plugin {}",
+                        self.plugin_name
+                    );
+                }
+            }
             let (tx, rx) = oneshot::channel();
             if let Err(e) = command_tx
                 .send(JvmCommand::FireEvent {

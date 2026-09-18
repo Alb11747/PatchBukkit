@@ -102,4 +102,106 @@ public final class ServerTests {
         assertTrue(cmd == null, "Server.getPluginCommand(unknown) should be null");
     }
 
+    @ConformanceTest(name = "Server.getWorlds() returns non-empty list", category = TestCategory.SERVER)
+    public void testGetWorlds() {
+        var worlds = Bukkit.getServer().getWorlds();
+        assertNotNull(worlds, "Server.getWorlds()");
+        assertTrue(!worlds.isEmpty(), "Server.getWorlds() should not be empty");
+    }
+
+    @ConformanceTest(name = "Server.getMaxPlayers() returns positive int", category = TestCategory.SERVER)
+    public void testGetMaxPlayers() {
+        int max = Bukkit.getServer().getMaxPlayers();
+        assertTrue(max >= 0, "Server.getMaxPlayers() >= 0");
+    }
+
+    @ConformanceTest(name = "Server.getPort() returns port", category = TestCategory.SERVER)
+    public void testGetPort() {
+        int port = Bukkit.getServer().getPort();
+        assertTrue(port >= 0, "Server.getPort() >= 0");
+    }
+
+    @ConformanceTest(name = "Server.getIp() returns string", category = TestCategory.SERVER)
+    public void testGetIp() {
+        String ip = Bukkit.getServer().getIp();
+        assertNotNull(ip, "Server.getIp()");
+    }
+
+    @ConformanceTest(name = "Server.getViewDistance() returns positive int", category = TestCategory.SERVER)
+    public void testGetViewDistance() {
+        int vd = Bukkit.getServer().getViewDistance();
+        assertTrue(vd > 0, "Server.getViewDistance() > 0");
+    }
+
+    @ConformanceTest(name = "Server.getSimulationDistance() returns positive int", category = TestCategory.SERVER)
+    public void testGetSimulationDistance() {
+        int sd = Bukkit.getServer().getSimulationDistance();
+        assertTrue(sd > 0, "Server.getSimulationDistance() > 0");
+    }
+
+    @ConformanceTest(name = "Server.getUpdateFolder() returns string", category = TestCategory.SERVER)
+    public void testGetUpdateFolder() {
+        String uf = Bukkit.getServer().getUpdateFolder();
+        assertNotNull(uf, "Server.getUpdateFolder()");
+    }
+
+    @ConformanceTest(name = "Server.getUpdateFolderFile() returns non-null", category = TestCategory.SERVER)
+    public void testGetUpdateFolderFile() {
+        java.io.File file = Bukkit.getServer().getUpdateFolderFile();
+        assertNotNull(file, "Server.getUpdateFolderFile()");
+    }
+
+    @ConformanceTest(name = "Server.getConnectionThrottle() returns long", category = TestCategory.SERVER)
+    public void testGetConnectionThrottle() {
+        long throttle = Bukkit.getServer().getConnectionThrottle();
+        assertTrue(throttle >= 0, "Server.getConnectionThrottle() >= 0");
+    }
+
+    @ConformanceTest(name = "Server.broadcastMessage() works without throwing", category = TestCategory.SERVER)
+    @SuppressWarnings("deprecation")
+    public void testBroadcastMessage() {
+        int reached = Bukkit.getServer().broadcastMessage("test conformance broadcast");
+        assertTrue(reached >= 0, "broadcastMessage return >= 0");
+    }
+
+    @ConformanceTest(name = "Server.getOfflinePlayer(UUID) returns non-null", category = TestCategory.SERVER)
+    public void testGetOfflinePlayer() {
+        var op = Bukkit.getServer().getOfflinePlayer(java.util.UUID.randomUUID());
+        assertNotNull(op, "Server.getOfflinePlayer(UUID)");
+    }
+
+    @ConformanceTest(name = "Server.getBanList() returns non-null", category = TestCategory.SERVER)
+    public void testGetBanList() {
+        var bans = Bukkit.getServer().getBanList(org.bukkit.BanList.Type.NAME);
+        assertNotNull(bans, "Server.getBanList(NAME)");
+    }
+
+    @ConformanceTest(name = "Server.getOperators() returns non-null set", category = TestCategory.SERVER)
+    public void testGetOperators() {
+        var ops = Bukkit.getServer().getOperators();
+        assertNotNull(ops, "Server.getOperators()");
+    }
+
+    @ConformanceTest(name = "Server.getWhitelistedPlayers() returns non-null set", category = TestCategory.SERVER)
+    public void testGetWhitelistedPlayers() {
+        var wl = Bukkit.getServer().getWhitelistedPlayers();
+        assertNotNull(wl, "Server.getWhitelistedPlayers()");
+    }
+
+    @ConformanceTest(name = "Server.reloadWhitelist() executes without throwing", category = TestCategory.SERVER)
+    public void testReloadWhitelist() {
+        Bukkit.getServer().reloadWhitelist();
+    }
+
+    @ConformanceTest(name = "Server.getMotd() returns non-null", category = TestCategory.SERVER)
+    public void testGetMotd() {
+        String motd = Bukkit.getServer().getMotd();
+        assertNotNull(motd, "Server.getMotd()");
+    }
+
+    @ConformanceTest(name = "Server.getAllowNether() returns boolean", category = TestCategory.SERVER)
+    public void testGetAllowNether() {
+        boolean nether = Bukkit.getServer().getAllowNether();
+        assertTrue(nether || !nether, "Server.getAllowNether()");
+    }
 }

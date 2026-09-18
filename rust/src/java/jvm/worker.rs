@@ -55,11 +55,11 @@ impl JvmWorker {
                         context.clone(),
                         runtime_handle,
                         command_tx.clone(),
-                        config,
+                        config.clone(),
                     )
                     .unwrap();
                     self.context = Some(context);
-                    let result = self.initialize_jvm(&jassets_path);
+                    let result = self.initialize_jvm(&jassets_path, &config);
                     let _ = respond_to.send(result);
                 }
                 JvmCommand::LoadPlugin {
@@ -234,7 +234,11 @@ impl JvmWorker {
         tracing::info!("JVM worker thread exited");
     }
 
-    fn initialize_jvm(&mut self, jassets_path: &PathBuf) -> anyhow::Result<()> {
+    fn initialize_jvm(
+        &mut self,
+        jassets_path: &PathBuf,
+        config: &crate::config::patchbukkit::PatchBukkitConfig,
+    ) -> anyhow::Result<()> {
         tracing::info!("Initializing JVM with assets path: {jassets_path:?}");
 
         let mut jar_paths = Vec::new();
@@ -284,7 +288,7 @@ impl JvmWorker {
             .collect::<Vec<_>>()
             .join(separator);
 
-        let jvm_args = InitArgsBuilder::new()
+        let mut builder = InitArgsBuilder::new()
             .version(JNIVersion::V21)
             .option(format!("-Djava.class.path={classpath}"))
             .option("-XX:+IgnoreUnrecognizedVMOptions")
@@ -292,7 +296,28 @@ impl JvmWorker {
             .option("--enable-final-field-mutation=ALL-UNNAMED")
             .option("--add-opens=java.base/java.lang=ALL-UNNAMED")
             .option("--add-opens=java.base/java.lang.reflect=ALL-UNNAMED")
-            .option("-Dcom.google.protobuf.useUnsafe=false")
+            .option("-Dcom.google.protobuf.useUnsafe=false");
+
+        if let Some(ref max_heap) = config.jvm.max_heap {
+            builder = builder.option(format!("-Xmx{max_heap}"));
+        }
+        if let Some(ref initial_heap) = config.jvm.initial_heap {
+            builder = builder.option(format!("-Xms{initial_heap}"));
+        }
+        for arg in &config.jvm.extra_args {
+            builder = builder.option(arg.clone());
+        }
+
+        if config.diagnostics.debug_bridge {
+            tracing::info!(
+                "Configuring JVM: max_heap={:?}, initial_heap={:?}, extra_args={:?}",
+                config.jvm.max_heap,
+                config.jvm.initial_heap,
+                config.jvm.extra_args
+            );
+        }
+
+        let jvm_args = builder
             .build()
             .map_err(|e| anyhow::anyhow!("Failed to build JVM init args: {e:?}"))?;
 

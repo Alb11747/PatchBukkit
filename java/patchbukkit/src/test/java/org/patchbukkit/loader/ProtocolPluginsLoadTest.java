@@ -75,7 +75,7 @@ public class ProtocolPluginsLoadTest {
 
     @Test
     public void testLoadGrimAC() throws Exception {
-        File grimFile = new File("/home/alex/Documents/Development/Rust/Pumpkin/plugins/data/patchbukkit/patchbukkit-plugins/grimac-bukkit-2.3.74-61caa53.jar");
+        File grimFile = testPluginsDir.resolve("GrimAC.jar").toFile();
         if (!grimFile.exists()) {
             return;
         }

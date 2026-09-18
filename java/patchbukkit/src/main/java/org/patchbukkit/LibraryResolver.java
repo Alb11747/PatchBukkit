@@ -22,6 +22,9 @@ import org.eclipse.aether.transport.http.HttpTransporterFactory;
 import org.eclipse.aether.connector.basic.BasicRepositoryConnectorFactory;
 
 public final class LibraryResolver {
+    private static final java.util.logging.Logger LOGGER =
+        java.util.logging.Logger.getLogger("LibraryResolver");
+
     private LibraryResolver() {}
 
     public static List<File> resolveLibraries(
@@ -31,6 +34,14 @@ public final class LibraryResolver {
         if (coordinates == null || coordinates.isBlank()) {
             return List.of();
         }
+
+        try {
+            var config = patchbukkit.bridge.NativeBridgeFfi.getPatchBukkitConfig(patchbukkit.common.EmptyRequest.newBuilder().build());
+            if (config != null && !config.getDownloadDependencies()) {
+                LOGGER.info("[PatchBukkit] Library downloading is disabled in configuration, skipping resolution.");
+                return List.of();
+            }
+        } catch (Throwable ignored) {}
 
         Set<String> unique = new LinkedHashSet<>();
         for (String line : coordinates.split("\n")) {

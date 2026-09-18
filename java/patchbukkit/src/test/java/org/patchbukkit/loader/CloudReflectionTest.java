@@ -17,7 +17,10 @@ public class CloudReflectionTest {
     public void testGrimAcCloudReflection() throws Exception {
         PatchBukkitServer.initServer();
 
-        File grimFile = new File("/home/alex/Documents/Development/Rust/Pumpkin/plugins/data/patchbukkit/patchbukkit-plugins/grimac-bukkit-2.3.74-61caa53.jar");
+        File grimFile = new File("build/test-plugins/GrimAC.jar");
+        if (!grimFile.exists()) {
+            grimFile = new File("java/patchbukkit/build/test-plugins/GrimAC.jar");
+        }
         if (!grimFile.exists()) return;
 
         PatchBukkitPluginClassLoader loader = new PatchBukkitPluginClassLoader(

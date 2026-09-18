@@ -9,4 +9,9 @@ option java_package = "patchbukkit.config";
 
 message GetPatchBukkitConfigResponse {
   string minimum_supported_plugin_api = 1;
+  repeated string disabled_plugins = 2;
+  bool download_dependencies = 3;
+  bool warn_unimplemented_api = 4;
+  bool debug_bridge = 5;
+  string log_level = 6;
 }

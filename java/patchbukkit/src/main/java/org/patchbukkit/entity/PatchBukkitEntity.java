@@ -297,13 +297,17 @@ public class PatchBukkitEntity implements Entity {
     public @NotNull Location getLocation() {
         try {
             var location = NativeBridgeFfi.getLocation(BridgeUtils.convertUuid(this.uuid));
-            if (location != null && location.hasWorld() && location.hasPosition()) {
+            if (location != null && location.hasWorld() && location.hasPosition() && location.getWorld().hasUuid()) {
                 var world = PatchBukkitWorld.getOrCreate(BridgeUtils.convertUuid(location.getWorld().getUuid()));
                 var position = location.getPosition();
                 return new Location(world, position.getX(), position.getY(), position.getZ(), location.getYaw(), location.getPitch());
             }
         } catch (Throwable ignored) {}
-        return this.cachedLocation != null ? this.cachedLocation.clone() : new Location(null, 0, 0, 0);
+        Location fallback = this.cachedLocation != null ? this.cachedLocation.clone() : new Location(null, 0, 0, 0);
+        if (fallback.getWorld() == null && !Bukkit.getWorlds().isEmpty()) {
+            fallback.setWorld(Bukkit.getWorlds().get(0));
+        }
+        return fallback;
     }
 
     @Override
@@ -387,8 +391,16 @@ public class PatchBukkitEntity implements Entity {
 
     @Override
     public @NotNull World getWorld() {
-        var location = NativeBridgeFfi.getLocation(BridgeUtils.convertUuid(this.uuid));
-        return PatchBukkitWorld.getOrCreate(BridgeUtils.convertUuid(location.getWorld().getUuid()));
+        try {
+            var location = NativeBridgeFfi.getLocation(BridgeUtils.convertUuid(this.uuid));
+            if (location != null && location.hasWorld() && location.getWorld().hasUuid()) {
+                return PatchBukkitWorld.getOrCreate(BridgeUtils.convertUuid(location.getWorld().getUuid()));
+            }
+        } catch (Throwable ignored) {}
+        if (this.cachedLocation != null && this.cachedLocation.getWorld() != null) {
+            return this.cachedLocation.getWorld();
+        }
+        return Bukkit.getWorlds().isEmpty() ? null : Bukkit.getWorlds().get(0);
     }
 
     @Override

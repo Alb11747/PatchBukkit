@@ -54,7 +54,7 @@ pub fn ffi_native_bridge_register_command_impl(request: RegisterCommandRequest) 
             .cloned()
             .collect();
 
-        let node = init_java_command(primary_name.clone(), command_tx, description);
+        let node = init_java_command(primary_name, command_tx, description);
 
         let clean_perm = cmd_name.trim_start_matches('/');
         let permission = format!("patchbukkit:command.{clean_perm}");

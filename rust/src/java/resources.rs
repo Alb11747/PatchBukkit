@@ -25,7 +25,7 @@ fn cleanup_stale_files(resources_folder: &Path) {
 
     for entry in walkdir::WalkDir::new(resources_folder)
         .into_iter()
-        .filter_map(|e| e.ok())
+        .filter_map(std::result::Result::ok)
         .filter(|e| e.file_type().is_file())
     {
         let path = entry.path();
@@ -41,7 +41,7 @@ fn cleanup_stale_files(resources_folder: &Path) {
     for entry in walkdir::WalkDir::new(resources_folder)
         .contents_first(true)
         .into_iter()
-        .filter_map(|e| e.ok())
+        .filter_map(std::result::Result::ok)
         .filter(|e| e.file_type().is_dir() && e.path() != resources_folder)
     {
         let _ = fs::remove_dir(entry.path());

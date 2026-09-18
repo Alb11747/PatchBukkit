@@ -50,9 +50,9 @@ pub use command::*;
 pub mod server;
 pub use server::*;
 
-static CALLBACK_CONTEXT: OnceLock<CallbackContext> = OnceLock::new();
+pub(crate) static CALLBACK_CONTEXT: OnceLock<CallbackContext> = OnceLock::new();
 
-struct CallbackContext {
+pub(crate) struct CallbackContext {
     pub plugin_context: Arc<Context>,
     pub runtime: tokio::runtime::Handle,
     pub command_tx: mpsc::Sender<JvmCommand>,

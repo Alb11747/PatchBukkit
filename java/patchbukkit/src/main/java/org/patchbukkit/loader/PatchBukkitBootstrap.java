@@ -38,12 +38,32 @@ public class PatchBukkitBootstrap {
                 return true;
             }
 
+            Set<String> disabledPlugins = new HashSet<>();
+            boolean debugBridge = false;
+            try {
+                var config = patchbukkit.bridge.NativeBridgeFfi.getPatchBukkitConfig(patchbukkit.common.EmptyRequest.newBuilder().build());
+                if (config != null) {
+                    for (String d : config.getDisabledPluginsList()) {
+                        disabledPlugins.add(d.toLowerCase(Locale.ENGLISH));
+                    }
+                    debugBridge = config.getDebugBridge();
+                }
+            } catch (Throwable ignored) {}
+
+            if (debugBridge && !disabledPlugins.isEmpty()) {
+                LOGGER.info("[PatchBukkit] Disabled plugins from config: " + disabledPlugins);
+            }
+
             Map<String, PluginHolder> holders = new LinkedHashMap<>();
 
             for (File jarFile : jarFiles) {
                 try {
                     PluginHolder holder = parsePluginHolder(jarFile);
                     if (holder != null) {
+                        if (disabledPlugins.contains(holder.name.toLowerCase(Locale.ENGLISH))) {
+                            LOGGER.info("[PatchBukkit] Plugin '" + holder.name + "' is disabled in configuration, skipping.");
+                            continue;
+                        }
                         holders.put(holder.name.toLowerCase(Locale.ENGLISH), holder);
                     }
                 } catch (Throwable t) {

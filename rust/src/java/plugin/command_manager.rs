@@ -19,7 +19,7 @@ impl CommandManager {
     }
 
     pub fn get_tab_complete(
-        &mut self,
+        &self,
         env: &mut Env,
         sender: SimpleCommandSender,
         full_command: String,
@@ -35,7 +35,7 @@ impl CommandManager {
     }
 
     fn try_tab_complete(
-        &mut self,
+        &self,
         env: &mut Env,
         sender: SimpleCommandSender,
         full_command: String,

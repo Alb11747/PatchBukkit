@@ -23,10 +23,10 @@ public final class EntityTests {
         }
     }
 
-    @ConformanceTest(name = "Server.getEntity(UUID) stub", category = TestCategory.ENTITY,
-            expectation = TestExpectation.EXPECT_UNSUPPORTED)
+    @ConformanceTest(name = "Server.getEntity(UUID) returns null for random UUID", category = TestCategory.ENTITY)
     public void testGetEntity() {
-        Bukkit.getServer().getEntity(UUID.randomUUID());
+        var entity = Bukkit.getServer().getEntity(UUID.randomUUID());
+        assertTrue(entity == null, "Server.getEntity(randomUUID) should be null");
     }
 
     @ConformanceTest(name = "Player flight state and speed getters run cleanly", category = TestCategory.ENTITY)

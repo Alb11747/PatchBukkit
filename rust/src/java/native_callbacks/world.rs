@@ -614,9 +614,8 @@ pub fn ffi_native_bridge_save_world_impl(request: SaveWorldRequest) -> Option<()
         .cloned()
         .or_else(|| worlds.first().cloned())?;
 
-    let w = world.clone();
     ctx.runtime.spawn(async move {
-        let _ = w.save().await;
+        let _ = world.save().await;
     });
 
     Some(())

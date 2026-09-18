@@ -28,6 +28,7 @@ import java.util.Date;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -727,12 +728,61 @@ public class PatchBukkitServer implements Server {
             rootConfig.removeAppender("ServerGuiConsole");
             rootConfig.removeAppender("Async");
 
-            rootConfig.addAppender(appender, org.apache.logging.log4j.Level.ALL, null);
-            rootConfig.setLevel(org.apache.logging.log4j.Level.ALL);
+            org.apache.logging.log4j.Level targetLevel = getEffectiveLog4jLevel();
+            rootConfig.addAppender(appender, targetLevel, null);
+            rootConfig.setLevel(targetLevel);
             context.updateLoggers();
         } catch (Throwable t) {
             ORIGINAL_ERR.println("[PatchBukkit] Failed to initialize Log4j native bridge appender: " + t.getMessage());
         }
+    }
+
+    public static org.apache.logging.log4j.Level getEffectiveLog4jLevel() {
+        try {
+            var cfg = NativeBridgeFfi.getPatchBukkitConfig(patchbukkit.common.EmptyRequest.newBuilder().build());
+            if (cfg != null) {
+                if (cfg.getDebugBridge()) {
+                    return org.apache.logging.log4j.Level.ALL;
+                }
+                String level = cfg.getLogLevel();
+                if (level != null && !level.isBlank()) {
+                    return switch (level.toLowerCase(Locale.ENGLISH).trim()) {
+                        case "trace" -> org.apache.logging.log4j.Level.TRACE;
+                        case "debug" -> org.apache.logging.log4j.Level.DEBUG;
+                        case "warn", "warning" -> org.apache.logging.log4j.Level.WARN;
+                        case "error", "severe" -> org.apache.logging.log4j.Level.ERROR;
+                        case "off" -> org.apache.logging.log4j.Level.OFF;
+                        case "all" -> org.apache.logging.log4j.Level.ALL;
+                        default -> org.apache.logging.log4j.Level.INFO;
+                    };
+                }
+            }
+        } catch (Throwable ignored) {}
+        return org.apache.logging.log4j.Level.INFO;
+    }
+
+    public static Level getEffectiveJulLevel() {
+        try {
+            var cfg = NativeBridgeFfi.getPatchBukkitConfig(patchbukkit.common.EmptyRequest.newBuilder().build());
+            if (cfg != null) {
+                if (cfg.getDebugBridge()) {
+                    return Level.ALL;
+                }
+                String level = cfg.getLogLevel();
+                if (level != null && !level.isBlank()) {
+                    return switch (level.toLowerCase(Locale.ENGLISH).trim()) {
+                        case "trace" -> Level.FINEST;
+                        case "debug" -> Level.FINE;
+                        case "warn", "warning" -> Level.WARNING;
+                        case "error", "severe" -> Level.SEVERE;
+                        case "off" -> Level.OFF;
+                        case "all" -> Level.ALL;
+                        default -> Level.INFO;
+                    };
+                }
+            }
+        } catch (Throwable ignored) {}
+        return Level.INFO;
     }
 
     private static void configureJulLogger() {
@@ -741,7 +791,7 @@ public class PatchBukkitServer implements Server {
         for (java.util.logging.Handler h : root.getHandlers()) {
             root.removeHandler(h);
         }
-        root.setLevel(Level.ALL);
+        root.setLevel(getEffectiveJulLevel());
         try {
             root.addHandler(new org.bukkit.craftbukkit.util.ForwardLogHandler());
         } catch (Throwable t) {

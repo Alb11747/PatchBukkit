@@ -1,4 +1,7 @@
-use std::{fs, path::PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use pumpkin::plugin::Context;
 
@@ -9,7 +12,19 @@ pub struct PatchBukkitDirectories {
     pub jassets: PathBuf,
 }
 
-pub fn setup_directories(server: &Context) -> Result<PatchBukkitDirectories, String> {
+pub fn get_base_directory(server: &Context) -> Result<PathBuf, String> {
+    let data_folder = std::path::absolute(server.get_data_folder())
+        .map_err(|_| "Failed to get absolute directory from relative")?;
+    let server_root = data_folder
+        .parent()
+        .ok_or("Failed to determine server root from PatchBukkit data folder")?;
+    Ok(server_root.join("patchbukkit"))
+}
+
+pub fn setup_directories(
+    server: &Context,
+    plugins_dir_name: &str,
+) -> Result<PatchBukkitDirectories, String> {
     let data_folder = std::path::absolute(server.get_data_folder())
         .map_err(|_| "Failed to get absolute directory from relative")?;
     let server_root = data_folder
@@ -17,7 +32,14 @@ pub fn setup_directories(server: &Context) -> Result<PatchBukkitDirectories, Str
         .ok_or("Failed to determine server root from PatchBukkit data folder")?;
     let base = server_root.join("patchbukkit");
 
-    let plugins = base.join("patchbukkit-plugins");
+    let plugins = if Path::new(plugins_dir_name).is_absolute() {
+        PathBuf::from(plugins_dir_name)
+    } else if plugins_dir_name == "patchbukkit-plugins" {
+        base.join("patchbukkit-plugins")
+    } else {
+        server_root.join(plugins_dir_name)
+    };
+
     let plugin_updates = plugins.join("update");
     let jassets = base.join("jassets");
 
@@ -25,7 +47,7 @@ pub fn setup_directories(server: &Context) -> Result<PatchBukkitDirectories, Str
         .map_err(|err| format!("Failed to create jassets folder: {err:?}"))?;
 
     fs::create_dir_all(&plugins)
-        .map_err(|err| format!("Failed to create patchbukkit-plugins folder: {err:?}"))?;
+        .map_err(|err| format!("Failed to create plugins folder: {err:?}"))?;
 
     let patchbukkit_jar_dest = jassets.join("patchbukkit.jar");
 

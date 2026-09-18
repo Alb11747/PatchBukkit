@@ -55,7 +55,8 @@ async fn test_pumpkin_server_with_patchbukkit_and_plugins() {
     ));
 
     // Setup directories
-    let dirs = setup_directories(&context).expect("Failed to setup PatchBukkit directories");
+    let dirs = setup_directories(&context, "patchbukkit-plugins")
+        .expect("Failed to setup PatchBukkit directories");
 
     // Resolve test plugins built in java/patchbukkit/build/test-plugins
     let test_plugins_dir = if prev_dir.join("java").exists() {
@@ -94,12 +95,38 @@ async fn test_pumpkin_server_with_patchbukkit_and_plugins() {
         );
     }
 
-    let grimac_system_source = std::path::PathBuf::from(
-        "/home/alex/Documents/Development/Rust/Pumpkin/plugins/data/patchbukkit/patchbukkit-plugins/grimac-bukkit-2.3.74-61caa53.jar",
-    );
-    if grimac_system_source.exists() {
-        let _ = fs::copy(&grimac_system_source, dirs.plugins.join("GrimAC.jar"));
+    let grimac_source = test_plugins_dir.join("GrimAC.jar");
+    if grimac_source.exists() {
+        let _ = fs::copy(&grimac_source, dirs.plugins.join("GrimAC.jar"));
         println!("Copied GrimAC.jar to plugins directory: {:?}", dirs.plugins);
+    }
+
+    let test_plugin_source = {
+        let direct = if prev_dir.join("java").exists() {
+            prev_dir.join("java/patchbukkit-test-plugin/build/libs/patchbukkit-test-plugin.jar")
+        } else if let Some(parent) = prev_dir.parent() {
+            parent.join("java/patchbukkit-test-plugin/build/libs/patchbukkit-test-plugin.jar")
+        } else {
+            std::path::PathBuf::from(
+                "java/patchbukkit-test-plugin/build/libs/patchbukkit-test-plugin.jar",
+            )
+        };
+        if direct.exists() {
+            direct
+        } else {
+            test_plugins_dir.join("patchbukkit-test-plugin.jar")
+        }
+    };
+    if test_plugin_source.exists() {
+        fs::copy(
+            &test_plugin_source,
+            dirs.plugins.join("patchbukkit-test-plugin.jar"),
+        )
+        .expect("Failed to copy patchbukkit-test-plugin.jar to plugins dir");
+        println!(
+            "Copied patchbukkit-test-plugin.jar to plugins directory: {:?}",
+            dirs.plugins
+        );
     }
 
     let plugin = PatchBukkitPlugin::new();
@@ -150,12 +177,11 @@ async fn test_pumpkin_server_with_patchbukkit_and_plugins() {
         let pe_res = rx.await.expect("Failed to receive packetevents response");
         assert!(
             pe_res.is_ok(),
-            "packetevents command should execute successfully: {:?}",
-            pe_res
+            "packetevents command should execute successfully: {pe_res:?}"
         );
     }
 
-    if grimac_system_source.exists() {
+    if grimac_source.exists() {
         let (tx, rx) = oneshot::channel();
         plugin
             .command_tx
@@ -170,8 +196,7 @@ async fn test_pumpkin_server_with_patchbukkit_and_plugins() {
         let grim_res = rx.await.expect("Failed to receive grim response");
         assert!(
             grim_res.is_ok(),
-            "grim command should execute successfully: {:?}",
-            grim_res
+            "grim command should execute successfully: {grim_res:?}"
         );
 
         // Test PlayerJoinEvent with GrimAC and PacketEvents
@@ -212,8 +237,27 @@ async fn test_pumpkin_server_with_patchbukkit_and_plugins() {
             .expect("Failed to receive PlayerJoin response");
         assert!(
             !join_res.cancelled,
-            "PlayerJoin should not be cancelled: {:?}",
-            join_res
+            "PlayerJoin should not be cancelled: {join_res:?}"
+        );
+    }
+
+    // Run Bukkit API Conformance tests via patchbukkit-test-plugin
+    if test_plugin_source.exists() {
+        let (tx, rx) = oneshot::channel();
+        plugin
+            .command_tx
+            .send(JvmCommand::TriggerCommand {
+                full_command: "pbtest all".to_string(),
+                command_sender: SimpleCommandSender::Console,
+                respond_to: tx,
+            })
+            .await
+            .expect("Failed to send pbtest all TriggerCommand");
+
+        let pbtest_res = rx.await.expect("Failed to receive pbtest all response");
+        assert!(
+            pbtest_res.is_ok(),
+            "pbtest all command should execute successfully: {pbtest_res:?}"
         );
     }
 

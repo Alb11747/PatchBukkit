@@ -12,7 +12,7 @@ pub mod events;
 pub mod java;
 pub mod proto;
 
-use directories::setup_directories;
+use directories::{get_base_directory, setup_directories};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::{
@@ -27,20 +27,24 @@ pub async fn on_load_inner(plugin: &PatchBukkitPlugin, server: Arc<Context>) -> 
     server.init_log();
     tracing::info!("Starting PatchBukkit");
 
-    // Setup directories
-    let dirs = setup_directories(&server)?;
+    let base = get_base_directory(&server)?;
+    std::fs::create_dir_all(&base)
+        .map_err(|e| format!("Failed to create PatchBukkit base directory: {e}"))?;
 
-    let mut config_path = dirs.base.clone();
+    let mut config_path = base;
     config_path.push("patchbukkit.config.toml");
     let config = PatchBukkitConfig::get_or_create(config_path)
         .map_err(|e| format!("Failed to setup PatchBukkit config: {e}"))?;
+
+    // Setup directories
+    let dirs = setup_directories(&server, &config.plugins.directory)?;
 
     // Manage embedded resources
     setup_resources(&dirs.jassets).map_err(|e| format!("Failed to setup resources: {e}"))?;
 
     let runtime_handle = plugin.runtime.handle().clone();
     let command_tx = plugin.command_tx.clone();
-    let server_clone = server.clone();
+    let server_clone = server;
 
     // Run JVM initialization and Java plugin bootstrap in a background task
     // on PatchBukkit's dedicated runtime so Pumpkin's main startup is never blocked.
