@@ -210,6 +210,9 @@ impl BotClient {
                                 let _ = bot_clone
                                     .send_packet(&SConfirmTeleport {
                                         teleport_id: pkt.teleport_id,
+                                        position: pkt.position,
+                                        yaw: pkt.yaw,
+                                        pitch: pkt.pitch,
                                     })
                                     .await;
                                 let _ = bot_clone.send_packet(&SPlayerLoaded).await;
