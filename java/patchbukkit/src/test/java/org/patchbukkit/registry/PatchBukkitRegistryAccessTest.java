@@ -13,11 +13,12 @@ import static org.junit.jupiter.api.Assertions.*;
 public class PatchBukkitRegistryAccessTest {
 
     @BeforeEach
-    public void setUp() {
+    public void setUp() throws ReflectiveOperationException {
         if (org.bukkit.Bukkit.getServer() == null) {
             org.patchbukkit.PatchBukkitServer server = new org.patchbukkit.PatchBukkitServer();
             org.bukkit.Bukkit.setServer(server);
         }
+        NativeItemFixture.install();
     }
 
     @Test

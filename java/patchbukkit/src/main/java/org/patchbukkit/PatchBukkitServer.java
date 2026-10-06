@@ -163,6 +163,7 @@ import patchbukkit.server.WhitelistEntryProto;
 public class PatchBukkitServer implements Server {
     private static final Logger logger = Logger.getLogger("Minecraft");
     private static volatile PatchBukkitServer INSTANCE;
+    private final Thread primaryThread = Thread.currentThread();
 
     public PatchBukkitServer() {
         INSTANCE = this;
@@ -1900,7 +1901,15 @@ public class PatchBukkitServer implements Server {
 
     @Override
     public boolean isPrimaryThread() {
-        return true;
+        return Thread.currentThread() == this.primaryThread;
+    }
+
+    /** Called only by the native JVM worker that owns synchronous Bukkit dispatch. */
+    public static void tickScheduler() {
+        PatchBukkitServer server = INSTANCE;
+        if (server != null) {
+            ((PatchBukkitScheduler) server.getScheduler()).tick();
+        }
     }
 
     @Override

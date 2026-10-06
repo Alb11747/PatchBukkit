@@ -2,8 +2,10 @@ package org.patchbukkit.registry;
 
 import org.bukkit.Keyed;
 import org.bukkit.Material;
+import org.bukkit.Registry;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.ItemType;
+import patchbukkit.registry.ItemDefinition;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;
@@ -13,7 +15,13 @@ public final class PatchBukkitItemType {
     private PatchBukkitItemType() {}
 
     public static ItemType create(Material material) {
-        if (material == null) return null;
+        if (material == null || material.isLegacy()) return null;
+        return Registry.ITEM.get(material.getKey());
+    }
+
+    public static ItemType create(Material material, ItemDefinition item) {
+        if (material == null || material.isLegacy()) return null;
+        // Material delegates these properties to ItemType. The native registry supplies its defaults.
 
         return (ItemType) Proxy.newProxyInstance(
                 PatchBukkitItemType.class.getClassLoader(),
@@ -27,16 +35,16 @@ public final class PatchBukkitItemType {
                         return material;
                     }
                     if ("getMaxStackSize".equals(name)) {
-                        return material.getMaxStackSize();
+                        return item.getMaxStackSize();
                     }
                     if ("getMaxDurability".equals(name)) {
-                        return (int) material.getMaxDurability();
+                        return (short) item.getMaxDurability();
                     }
                     if ("isEdible".equals(name)) {
-                        return material.isEdible();
+                        return item.getEdible();
                     }
                     if ("isRecord".equals(name)) {
-                        return material.isRecord();
+                        return item.getRecord();
                     }
                     if ("createItemStack".equals(name)) {
                         int amount = (args != null && args.length > 0 && args[0] instanceof Integer i) ? i : 1;

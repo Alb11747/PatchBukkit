@@ -22,6 +22,13 @@ pub fn ffi_native_bridge_call_event_impl(request: CallEventRequest) -> Option<Ca
 }
 
 pub fn ffi_native_bridge_register_event_impl(request: RegisterEventRequest) -> Option<()> {
+    if request.event_type == "org.bukkit.event.server.RemoteServerCommandEvent" {
+        tracing::warn!(
+            plugin = %request.plugin_name,
+            "RemoteServerCommandEvent is unavailable in the pinned Pumpkin core API"
+        );
+        return None;
+    }
     let mut registered = REGISTERED_EVENTS.lock().unwrap();
     if !registered.insert((request.plugin_name.clone(), request.event_type.clone())) {
         return Some(());
@@ -368,20 +375,6 @@ pub fn ffi_native_bridge_register_event_impl(request: RegisterEventRequest) -> O
                 .register_event::<
                     pumpkin::plugin::server::plugin_enable::PluginEnableEvent,
                     PatchBukkitEventHandler<pumpkin::plugin::server::plugin_enable::PluginEnableEvent>,
-                >(
-                    Arc::new(PatchBukkitEventHandler::new(
-                        request.plugin_name.clone(),
-                        command_tx.clone(),
-                    )),
-                    pumpkin_priority,
-                    request.blocking,
-                );
-        }
-        "org.bukkit.event.server.RemoteServerCommandEvent" => {
-            plugin_context
-                .register_event::<
-                    pumpkin::plugin::server::remote_server_command::RemoteServerCommandEvent,
-                    PatchBukkitEventHandler<pumpkin::plugin::server::remote_server_command::RemoteServerCommandEvent>,
                 >(
                     Arc::new(PatchBukkitEventHandler::new(
                         request.plugin_name.clone(),
@@ -3775,4 +3768,20 @@ pub fn ffi_native_bridge_register_event_impl(request: RegisterEventRequest) -> O
     }
 
     Some(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn removed_remote_command_event_is_rejected_on_repeated_registration() {
+        let request = RegisterEventRequest {
+            plugin_name: "compatibility-regression".to_owned(),
+            event_type: "org.bukkit.event.server.RemoteServerCommandEvent".to_owned(),
+            ..Default::default()
+        };
+        assert!(ffi_native_bridge_register_event_impl(request.clone()).is_none());
+        assert!(ffi_native_bridge_register_event_impl(request).is_none());
+    }
 }

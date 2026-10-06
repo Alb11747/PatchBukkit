@@ -9,6 +9,7 @@ option java_package = "patchbukkit.registry";
 
 enum RegistryType {
   SOUND_EVENT = 0;
+  ITEM = 1;
 }
 
 message GetRegistryDataRequest {
@@ -18,6 +19,7 @@ message GetRegistryDataRequest {
 message GetRegistryDataResponse {
   oneof registry {
     SoundEventRegistryData sound_event = 1;
+    ItemRegistryData item = 2;
   }
 }
 
@@ -28,4 +30,16 @@ message SoundEvent {
 
 message SoundEventRegistryData {
   repeated SoundEvent sound_events = 1;
+}
+
+message ItemDefinition {
+  string name = 1;
+  uint32 max_stack_size = 2;
+  uint32 max_durability = 3;
+  bool edible = 4;
+  bool record = 5;
+}
+
+message ItemRegistryData {
+  repeated ItemDefinition items = 1;
 }

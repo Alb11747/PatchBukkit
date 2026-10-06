@@ -30,6 +30,11 @@ public class PatchBukkitRegistryAccess extends io.papermc.paper.registry.PaperRe
                 data.getName(),
                 data.getId()
             )
+        ),
+        RegistryKey.ITEM, new RegistryFactory<>(
+            RegistryType.ITEM,
+            response -> response != null && response.hasItem() ? response.getItem().getItemsList() : Collections.emptyList(),
+            data -> PatchBukkitItemType.create(org.bukkit.Material.matchMaterial(data.getName()), data)
         )
     );
 

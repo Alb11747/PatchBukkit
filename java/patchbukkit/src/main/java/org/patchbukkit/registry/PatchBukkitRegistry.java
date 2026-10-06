@@ -34,6 +34,7 @@ public class PatchBukkitRegistry<P, B extends Keyed> implements Registry<B> {
     private final Function<GetRegistryDataResponse, List<P>> extractor;
     private final Function<P, B> factory;
     private volatile boolean initialized = false;
+    private Thread initializingThread;
 
     public PatchBukkitRegistry(RegistryKey<B> registryKey) {
         this(null, null, null, registryKey);
@@ -60,11 +61,19 @@ public class PatchBukkitRegistry<P, B extends Keyed> implements Registry<B> {
     }
 
     public void ensureInitialized() {
+        // Only complete registries may bypass the lock: Paper can permanently memoize a missing item.
         if (initialized) return;
         synchronized (this) {
             if (initialized) return;
-            initialized = true;
-            initializeInternal();
+            // Bukkit constant initialization can query this registry again on the loading thread.
+            if (initializingThread == Thread.currentThread()) return;
+            initializingThread = Thread.currentThread();
+            try {
+                initializeInternal();
+                initialized = true;
+            } finally {
+                initializingThread = null;
+            }
         }
     }
 
@@ -76,7 +85,10 @@ public class PatchBukkitRegistry<P, B extends Keyed> implements Registry<B> {
                         .setRegistry(registryType)
                         .build();
 
-                GetRegistryDataResponse response = NativeBridgeFfi.getRegistryData(request);
+                GetRegistryDataResponse response = loadRegistryData(request);
+                if (registryType == RegistryType.ITEM && (response == null || !response.hasItem())) {
+                    throw new IllegalStateException("Native item registry response is missing");
+                }
                 if (response != null && extractor != null) {
                     List<P> protoEntries = extractor.apply(response);
                     if (protoEntries != null) {
@@ -88,30 +100,26 @@ public class PatchBukkitRegistry<P, B extends Keyed> implements Registry<B> {
                                     entries.put(value.getKey(), value);
                                 }
                             } catch (Throwable t) {
+                                if (registryType == RegistryType.ITEM) {
+                                    throw new IllegalStateException("Could not initialize native item registry entry", t);
+                                }
                                 // Skip invalid entry safely
                             }
                         }
                     }
                 }
             } catch (Throwable t) {
+                if (registryType == RegistryType.ITEM) {
+                    throw new IllegalStateException("Native item registry is unavailable", t);
+                }
                 // Ignore FFI or RPC failure safely
             }
         }
 
-        // Auto-discover pre-registered Paper/Bukkit constants for this registry
-        if (registryKey != null) {
-            if (RegistryKey.ITEM.equals(registryKey) || "item".equalsIgnoreCase(registryKey.key().value())) {
-                for (Material mat : Material.values()) {
-                    try {
-                        if (!mat.isLegacy() && mat.getKey() != null) {
-                            B itemType = (B) PatchBukkitItemType.create(mat);
-                            if (itemType != null) {
-                                entries.put(mat.getKey(), itemType);
-                            }
-                        }
-                    } catch (Throwable ignored) {}
-                }
-            } else if (RegistryKey.BLOCK.equals(registryKey) || "block".equalsIgnoreCase(registryKey.key().value())) {
+        // Native item entries are complete; reflecting ItemType constants can cycle through their global registry.
+        // Auto-discover pre-registered Paper/Bukkit constants for other registries.
+        if (registryKey != null && registryType != RegistryType.ITEM) {
+            if (RegistryKey.BLOCK.equals(registryKey) || "block".equalsIgnoreCase(registryKey.key().value())) {
                 for (Material mat : Material.values()) {
                     try {
                         if (!mat.isLegacy() && mat.getKey() != null) {
@@ -137,6 +145,10 @@ public class PatchBukkitRegistry<P, B extends Keyed> implements Registry<B> {
                 }
             }
         }
+    }
+
+    GetRegistryDataResponse loadRegistryData(GetRegistryDataRequest request) {
+        return NativeBridgeFfi.getRegistryData(request);
     }
 
     private static final String[] DEFAULT_DAMAGE_TYPES = {
@@ -256,19 +268,6 @@ public class PatchBukkitRegistry<P, B extends Keyed> implements Registry<B> {
                 } catch (Throwable t) {
                     return null;
                 }
-            }
-            // Fallback for ItemType via Material
-            if (RegistryKey.ITEM.equals(registryKey) || "item".equalsIgnoreCase(registryKey != null ? registryKey.key().value() : "")) {
-                try {
-                    Material mat = Material.matchMaterial(key.getKey());
-                    if (mat != null && mat.isItem()) {
-                        B itemType = (B) PatchBukkitItemType.create(mat);
-                        if (itemType != null) {
-                            entries.put(key, itemType);
-                            return itemType;
-                        }
-                    }
-                } catch (Throwable ignored) {}
             }
             // Fallback for BlockType via Material
             if (RegistryKey.BLOCK.equals(registryKey) || "block".equalsIgnoreCase(registryKey != null ? registryKey.key().value() : "")) {

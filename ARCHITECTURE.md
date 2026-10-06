@@ -25,10 +25,19 @@ When PatchBukkit is started, it performs the following steps:
     - PatchBukkit then tells the `JvmWorker` to start the JVM via `JvmCommand::Initialize`.
     - Finally, we load the plugins and enable them all via sending a `JvmCommand::InstantiateAllPlugins` and `JvmCommand::EnableAllPlugins` command to the `JvmWorker`.
 
-Now you might be wondering why we keep JvmWorker on its own thread. The reason
-we do this is because the Jvm is not thread-safe. By keeping JvmWorker on its
-own thread, we ensure that all interactions with the JVM are thread-safe and that
-the JVM is not accessed from multiple threads simultaneously.
+The `JvmWorker` thread serializes Bukkit plugin lifecycle, command and event
+dispatch. `PatchBukkitServer.isPrimaryThread()` identifies the Java thread on
+which that worker creates the server. JNI attachment remains active for the
+lifetime of the worker thread. The JVM also supports other attached threads;
+plugin-created threads and asynchronous scheduler jobs remain background work.
+Synchronous JNI dispatch uses `tokio::task::block_in_place` on that same OS
+thread. Native callbacks can then wait for runtime work with `blocking_recv`
+without panicking inside Tokio's async execution context.
+
+Synchronous scheduler jobs, `callSyncMethod` and `getMainThreadExecutor` are queued
+for dispatch on the worker. Its 50 ms interval pumps the queue between commands,
+skipping missed intervals rather than replaying an unbounded backlog. This is a
+bridge clock: it does not follow Pumpkin's tick-rate changes or paused ticks.
 
 **What does the JvmWorker do during this?**
 
@@ -76,6 +85,19 @@ service interfaces. During the build process:
 
 The generated code handles serialization/deserialization automatically, allowing type-safe
 communication between Rust and Java without manual struct layout management.
+
+The item registry uses this bridge to read default stack size, durability, food
+and jukebox properties from Pumpkin's generated item components. Paper's
+`Material` getters delegate to `ItemType`, so implementing those getters by
+calling back into `Material` causes recursion. Reading the bundled Minecraft
+item components directly also requires world/datapack initialization that this
+bridge does not perform. Item-registry bridge failures therefore remain visible
+instead of substituting guessed defaults. Rebuild both Java and Rust after
+changing the registry protocol.
+Registry completion is published only after loading finishes. Other threads
+wait for initialization; the initializing thread may reenter while resolving
+Bukkit constants. This prevents Paper's memoized material lookups from caching
+temporarily missing items.
 
 ## File Structure
 

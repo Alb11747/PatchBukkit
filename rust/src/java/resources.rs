@@ -84,3 +84,24 @@ fn update_resource_if_changed(path: &Path, new_data: &[u8]) -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Resources;
+    use std::{borrow::Cow, io::Cursor};
+
+    #[test]
+    fn java_jar_is_embedded_in_dev_builds() {
+        let resource = Resources::get("patchbukkit.jar").expect("Java API JAR must be embedded");
+        assert!(
+            matches!(resource.data, Cow::Borrowed(_)),
+            "Resources must use compiled bytes instead of reading the build machine's source folder"
+        );
+        let mut jar = zip::ZipArchive::new(Cursor::new(resource.data.as_ref()))
+            .expect("embedded Java API must be a valid JAR");
+        assert!(
+            jar.by_name("org/patchbukkit/PatchBukkitServer.class")
+                .is_ok()
+        );
+    }
+}

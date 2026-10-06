@@ -1,5 +1,6 @@
 use std::{path::PathBuf, sync::Arc};
 
+use super::dispatch::dispatch_sync;
 use jni::{Env, InitArgsBuilder, JNIVersion, JavaVM};
 use pumpkin::plugin::Context;
 use tokio::sync::mpsc;
@@ -41,197 +42,238 @@ impl JvmWorker {
     pub async fn attach_thread(mut self) {
         tracing::info!("JVM worker thread started");
 
-        while let Some(command) = self.command_rx.recv().await {
-            match command {
-                JvmCommand::Initialize {
-                    jassets_path,
-                    respond_to,
-                    context,
-                    runtime_handle,
-                    command_tx,
-                    config,
-                } => {
-                    init_callback_context(
-                        context.clone(),
+        let mut scheduler_tick = tokio::time::interval(std::time::Duration::from_millis(50));
+        scheduler_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            let command = tokio::select! {
+                command = self.command_rx.recv() => match command {
+                    Some(command) => command,
+                    None => break,
+                },
+                _ = scheduler_tick.tick() => {
+                    if let Err(error) = dispatch_sync(|| self.tick_scheduler()) {
+                        tracing::error!("Failed to tick Bukkit scheduler: {error}");
+                    }
+                    continue;
+                }
+            };
+            let shutting_down = dispatch_sync(|| {
+                match command {
+                    JvmCommand::Initialize {
+                        jassets_path,
+                        respond_to,
+                        context,
                         runtime_handle,
-                        command_tx.clone(),
-                        config.clone(),
-                    )
-                    .unwrap();
-                    self.context = Some(context);
-                    let result = self.initialize_jvm(&jassets_path, &config);
-                    let _ = respond_to.send(result);
-                }
-                JvmCommand::LoadPlugin {
-                    plugin_path,
-                    respond_to,
-                } => {
-                    let _ = match read_configs_from_jar(&plugin_path) {
-                        Ok(configs) => match configs {
-                            (Some(paper_plugin_config), spigot) => {
-                                match self.plugin_manager.load_paper_plugin(
-                                    &plugin_path,
-                                    &paper_plugin_config,
-                                    &spigot,
-                                ) {
-                                    Ok(()) => {
-                                        respond_to.send(LoadPluginResult::SuccessfullyLoadedPaper)
+                        command_tx,
+                        config,
+                    } => {
+                        init_callback_context(
+                            context.clone(),
+                            runtime_handle,
+                            command_tx.clone(),
+                            config.clone(),
+                        )
+                        .unwrap();
+                        self.context = Some(context);
+                        let result = self.initialize_jvm(&jassets_path, &config);
+                        let _ = respond_to.send(result);
+                    }
+                    JvmCommand::LoadPlugin {
+                        plugin_path,
+                        respond_to,
+                    } => {
+                        let _ = match read_configs_from_jar(&plugin_path) {
+                            Ok(configs) => match configs {
+                                (Some(paper_plugin_config), spigot) => {
+                                    match self.plugin_manager.load_paper_plugin(
+                                        &plugin_path,
+                                        &paper_plugin_config,
+                                        &spigot,
+                                    ) {
+                                        Ok(()) => respond_to
+                                            .send(LoadPluginResult::SuccessfullyLoadedPaper),
+                                        Err(err) => respond_to
+                                            .send(LoadPluginResult::FailedToLoadPaperPlugin(err)),
                                     }
-                                    Err(err) => respond_to
-                                        .send(LoadPluginResult::FailedToLoadPaperPlugin(err)),
                                 }
-                            }
-                            (None, Some(spigot)) => {
-                                match self
-                                    .plugin_manager
-                                    .load_spigot_plugin(&plugin_path, &spigot)
-                                {
-                                    Ok(()) => {
-                                        respond_to.send(LoadPluginResult::SuccessfullyLoadedSpigot)
+                                (None, Some(spigot)) => {
+                                    match self
+                                        .plugin_manager
+                                        .load_spigot_plugin(&plugin_path, &spigot)
+                                    {
+                                        Ok(()) => respond_to
+                                            .send(LoadPluginResult::SuccessfullyLoadedSpigot),
+                                        Err(err) => respond_to
+                                            .send(LoadPluginResult::FailedToLoadSpigotPlugin(err)),
                                     }
-                                    Err(err) => respond_to
-                                        .send(LoadPluginResult::FailedToLoadSpigotPlugin(err)),
                                 }
-                            }
-                            (None, None) => respond_to.send(LoadPluginResult::NoConfigurationFile),
-                        },
-                        Err(err) => {
-                            respond_to.send(LoadPluginResult::FailedToReadConfigurationFile(err))
-                        }
-                    };
-                }
-                JvmCommand::InstantiateAllPlugins {
-                    plugins_dir,
-                    respond_to,
-                    server,
-                    command_tx,
-                } => {
-                    let res = if let Some(ref jvm) = self.jvm {
-                        let plugins_dir = plugins_dir.clone();
-                        let server = server.clone();
-                        let command_tx = command_tx.clone();
-                        jvm.attach_current_thread(|env| -> anyhow::Result<()> {
-                            self.plugin_manager.instantiate_all_plugins(
-                                env,
-                                &plugins_dir,
-                                &server,
-                                command_tx,
-                                &mut self.command_manager,
-                            )
-                        })
-                        .map_err(|e| anyhow::anyhow!("Failed to instantiate plugins: {e}"))
-                    } else {
-                        Err(anyhow::anyhow!("JVM is not initialized"))
-                    };
-
-                    let _ = respond_to.send(res);
-                }
-                JvmCommand::EnableAllPlugins { respond_to } => {
-                    let res = if let Some(ref jvm) = self.jvm {
-                        jvm.attach_current_thread(|env| -> anyhow::Result<()> {
-                            self.plugin_manager.enable_all_plugins(env)
-                        })
-                        .map_err(|e| anyhow::anyhow!("Failed to enable plugins: {e}"))
-                    } else {
-                        Err(anyhow::anyhow!("JVM is not initialized"))
-                    };
-
-                    let _ = respond_to.send(res);
-                }
-                JvmCommand::DisableAllPlugins { respond_to } => {
-                    let res = if let Some(ref jvm) = self.jvm {
-                        jvm.attach_current_thread(|env| -> anyhow::Result<()> {
-                            self.plugin_manager.disable_all_plugins(env)
-                        })
-                        .map_err(|e| anyhow::anyhow!("Failed to disable plugins: {e}"))
-                    } else {
-                        Err(anyhow::anyhow!("JVM is not initialized"))
-                    };
-
-                    let _ = respond_to.send(res);
-                }
-                JvmCommand::Shutdown { respond_to } => {
-                    let _ = respond_to.send(self.plugin_manager.unload_all_plugins());
-                    break;
-                }
-                JvmCommand::FireEvent {
-                    respond_to,
-                    plugin,
-                    payload,
-                } => {
-                    let original_event = payload.event.clone();
-                    let response = if let Some(ref jvm) = self.jvm {
-                        match jvm.attach_current_thread(
-                            |env| -> anyhow::Result<FireEventResponse> {
-                                self.event_manager.fire_event(env, payload, plugin)
+                                (None, None) => {
+                                    respond_to.send(LoadPluginResult::NoConfigurationFile)
+                                }
                             },
-                        ) {
-                            Ok(resp) => resp,
-                            Err(e) => {
-                                tracing::error!("Failed to fire event: {e}");
-                                FireEventResponse {
-                                    cancelled: false,
-                                    data: Some(original_event),
+                            Err(err) => respond_to
+                                .send(LoadPluginResult::FailedToReadConfigurationFile(err)),
+                        };
+                    }
+                    JvmCommand::InstantiateAllPlugins {
+                        plugins_dir,
+                        respond_to,
+                        server,
+                        command_tx,
+                    } => {
+                        let res = if let Some(ref jvm) = self.jvm {
+                            let plugins_dir = plugins_dir.clone();
+                            let server = server.clone();
+                            let command_tx = command_tx.clone();
+                            jvm.attach_current_thread(|env| -> anyhow::Result<()> {
+                                self.plugin_manager.instantiate_all_plugins(
+                                    env,
+                                    &plugins_dir,
+                                    &server,
+                                    command_tx,
+                                    &mut self.command_manager,
+                                )
+                            })
+                            .map_err(|e| anyhow::anyhow!("Failed to instantiate plugins: {e}"))
+                        } else {
+                            Err(anyhow::anyhow!("JVM is not initialized"))
+                        };
+
+                        let _ = respond_to.send(res);
+                    }
+                    JvmCommand::EnableAllPlugins { respond_to } => {
+                        let res = if let Some(ref jvm) = self.jvm {
+                            jvm.attach_current_thread(|env| -> anyhow::Result<()> {
+                                self.plugin_manager.enable_all_plugins(env)
+                            })
+                            .map_err(|e| anyhow::anyhow!("Failed to enable plugins: {e}"))
+                        } else {
+                            Err(anyhow::anyhow!("JVM is not initialized"))
+                        };
+
+                        let _ = respond_to.send(res);
+                    }
+                    JvmCommand::DisableAllPlugins { respond_to } => {
+                        let res = if let Some(ref jvm) = self.jvm {
+                            jvm.attach_current_thread(|env| -> anyhow::Result<()> {
+                                self.plugin_manager.disable_all_plugins(env)
+                            })
+                            .map_err(|e| anyhow::anyhow!("Failed to disable plugins: {e}"))
+                        } else {
+                            Err(anyhow::anyhow!("JVM is not initialized"))
+                        };
+
+                        let _ = respond_to.send(res);
+                    }
+                    JvmCommand::Shutdown { respond_to } => {
+                        let _ = respond_to.send(self.plugin_manager.unload_all_plugins());
+                        return true;
+                    }
+                    JvmCommand::FireEvent {
+                        respond_to,
+                        plugin,
+                        payload,
+                    } => {
+                        let original_event = payload.event.clone();
+                        let response = if let Some(ref jvm) = self.jvm {
+                            match jvm.attach_current_thread(
+                                |env| -> anyhow::Result<FireEventResponse> {
+                                    self.event_manager.fire_event(env, payload, plugin)
+                                },
+                            ) {
+                                Ok(resp) => resp,
+                                Err(e) => {
+                                    tracing::error!("Failed to fire event: {e}");
+                                    FireEventResponse {
+                                        cancelled: false,
+                                        data: Some(original_event),
+                                    }
                                 }
                             }
-                        }
-                    } else {
-                        FireEventResponse {
-                            cancelled: false,
-                            data: Some(original_event),
-                        }
-                    };
-
-                    let _ = respond_to.send(response);
-                }
-                JvmCommand::TriggerCommand {
-                    full_command,
-                    command_sender,
-                    respond_to,
-                } => {
-                    let res = if let Some(ref jvm) = self.jvm {
-                        jvm.attach_current_thread(|env| -> anyhow::Result<()> {
-                            self.command_manager
-                                .trigger_command(env, full_command, command_sender)
-                        })
-                        .map_err(|e| anyhow::anyhow!("Failed to trigger command: {e}"))
-                    } else {
-                        Err(anyhow::anyhow!("JVM is not initialized"))
-                    };
-
-                    let _ = respond_to.send(res);
-                }
-                JvmCommand::GetCommandTabComplete {
-                    command_sender,
-                    full_command,
-                    respond_to,
-                    location,
-                } => {
-                    let res = if let Some(ref jvm) = self.jvm {
-                        match jvm.attach_current_thread(|env| -> anyhow::Result<_> {
-                            Ok(self.command_manager.get_tab_complete(
-                                env,
-                                command_sender,
-                                full_command,
-                                location,
-                            ))
-                        }) {
-                            Ok(inner_res) => inner_res,
-                            Err(e) => {
-                                tracing::error!("Failed to get tab complete: {e}");
-                                None
+                        } else {
+                            FireEventResponse {
+                                cancelled: false,
+                                data: Some(original_event),
                             }
-                        }
-                    } else {
-                        None
-                    };
+                        };
 
-                    let _ = respond_to.send(res);
+                        let _ = respond_to.send(response);
+                    }
+                    JvmCommand::TriggerCommand {
+                        full_command,
+                        command_sender,
+                        respond_to,
+                    } => {
+                        let res = if let Some(ref jvm) = self.jvm {
+                            jvm.attach_current_thread(|env| -> anyhow::Result<()> {
+                                self.command_manager.trigger_command(
+                                    env,
+                                    full_command,
+                                    command_sender,
+                                )
+                            })
+                            .map_err(|e| anyhow::anyhow!("Failed to trigger command: {e}"))
+                        } else {
+                            Err(anyhow::anyhow!("JVM is not initialized"))
+                        };
+
+                        let _ = respond_to.send(res);
+                    }
+                    JvmCommand::GetCommandTabComplete {
+                        command_sender,
+                        full_command,
+                        respond_to,
+                        location,
+                    } => {
+                        let res = if let Some(ref jvm) = self.jvm {
+                            match jvm.attach_current_thread(|env| -> anyhow::Result<_> {
+                                Ok(self.command_manager.get_tab_complete(
+                                    env,
+                                    command_sender,
+                                    full_command,
+                                    location,
+                                ))
+                            }) {
+                                Ok(inner_res) => inner_res,
+                                Err(e) => {
+                                    tracing::error!("Failed to get tab complete: {e}");
+                                    None
+                                }
+                            }
+                        } else {
+                            None
+                        };
+
+                        let _ = respond_to.send(res);
+                    }
                 }
+                false
+            });
+            if shutting_down {
+                break;
             }
         }
 
         tracing::info!("JVM worker thread exited");
+    }
+
+    fn tick_scheduler(&self) -> anyhow::Result<()> {
+        let Some(jvm) = &self.jvm else {
+            return Ok(());
+        };
+        jvm.attach_current_thread(|env| -> anyhow::Result<()> {
+            if let Err(error) = env.call_static_method(
+                jni::jni_str!("org/patchbukkit/PatchBukkitServer"),
+                jni::jni_str!("tickScheduler"),
+                jni::jni_sig!("()V"),
+                &[],
+            ) {
+                env.exception_describe();
+                env.exception_clear();
+                return Err(anyhow::anyhow!("Bukkit scheduler dispatch failed: {error}"));
+            }
+            Ok(())
+        })
     }
 
     fn initialize_jvm(

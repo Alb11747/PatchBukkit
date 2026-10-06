@@ -10,6 +10,7 @@ public class PatchBukkitTask implements BukkitTask {
     private final Plugin plugin;
     private final boolean sync;
     private final PatchBukkitScheduler scheduler;
+    private volatile boolean cancelled;
 
     public PatchBukkitTask(int id, Plugin plugin, boolean sync, PatchBukkitScheduler scheduler) {
         this.id = id;
@@ -35,11 +36,14 @@ public class PatchBukkitTask implements BukkitTask {
 
     @Override
     public boolean isCancelled() {
-        return !scheduler.isQueued(id) && !scheduler.isCurrentlyRunning(id);
+        return cancelled;
     }
+
+    void markCancelled() { cancelled = true; }
 
     @Override
     public void cancel() {
+        markCancelled();
         scheduler.cancelTask(id);
     }
 }
