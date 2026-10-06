@@ -11,13 +11,13 @@ build = "build/main.rs"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-# Native ABI 3 must match the server revision used for this compatibility build.
-pumpkin = { git = "https://github.com/Alb11747/Pumpkin.git", rev = "da9c69a554103681e34c28506dacd86b5784b5ea", package = "pumpkin-core" }
-pumpkin-data = { git = "https://github.com/Alb11747/Pumpkin.git", rev = "da9c69a554103681e34c28506dacd86b5784b5ea", package = "pumpkin-data" }
-pumpkin-protocol = { git = "https://github.com/Alb11747/Pumpkin.git", rev = "da9c69a554103681e34c28506dacd86b5784b5ea", package = "pumpkin-protocol" }
-pumpkin-util = { git = "https://github.com/Alb11747/Pumpkin.git", rev = "da9c69a554103681e34c28506dacd86b5784b5ea", package = "pumpkin-util" }
-pumpkin-config = { git = "https://github.com/Alb11747/Pumpkin.git", rev = "da9c69a554103681e34c28506dacd86b5784b5ea", package = "pumpkin-config" }
-pumpkin-api-macros = { git = "https://github.com/Alb11747/Pumpkin.git", rev = "da9c69a554103681e34c28506dacd86b5784b5ea", package = "pumpkin-api-macros" }
+# Native ABI 5 must match the server revision used for this compatibility build.
+pumpkin = { git = "https://github.com/Alb11747/Pumpkin.git", rev = "dd1b9b2f1b31b89948fa5fd4dced1edce031707a", package = "pumpkin-core" }
+pumpkin-data = { git = "https://github.com/Alb11747/Pumpkin.git", rev = "dd1b9b2f1b31b89948fa5fd4dced1edce031707a", package = "pumpkin-data" }
+pumpkin-protocol = { git = "https://github.com/Alb11747/Pumpkin.git", rev = "dd1b9b2f1b31b89948fa5fd4dced1edce031707a", package = "pumpkin-protocol" }
+pumpkin-util = { git = "https://github.com/Alb11747/Pumpkin.git", rev = "dd1b9b2f1b31b89948fa5fd4dced1edce031707a", package = "pumpkin-util" }
+pumpkin-config = { git = "https://github.com/Alb11747/Pumpkin.git", rev = "dd1b9b2f1b31b89948fa5fd4dced1edce031707a", package = "pumpkin-config" }
+pumpkin-api-macros = { git = "https://github.com/Alb11747/Pumpkin.git", rev = "dd1b9b2f1b31b89948fa5fd4dced1edce031707a", package = "pumpkin-api-macros" }
 
 tokio = "1"
 tracing = "0.1"

@@ -33,7 +33,7 @@ publication, task execution and cancellation; enabling a plugin is still only a 
 The bridge's 50 ms scheduler heartbeat does not yet follow paused or altered server tick rates.
 
 The fork pins the `pumpkin` dependency alias to the `pumpkin-core` library at server revision
-`da9c69a554103681e34c28506dacd86b5784b5ea` (native API 3). Server and bridge builds must also use the
+`dd1b9b2f1b31b89948fa5fd4dced1edce031707a` (native API 5). Server and bridge builds must also use the
 same Rust toolchain, target and profile. The dev profile disables debuginfo to match that server
 workspace. Existing native libraries built for another revision must be rebuilt.
 
@@ -41,6 +41,6 @@ The pinned core no longer exposes RCON command senders or `RemoteServerCommandEv
 rejects registration of that Bukkit event explicitly; player and console command mapping remains
 available. Other Bukkit APIs may still be unimplemented, so verify each required plugin at runtime.
 
-Local runtime checks with this server pairing verified Plan 5.8 build 3638 startup and a real player
+Baseline API 3 runtime checks verified Plan 5.8 build 3638 startup and a real player
 join/disconnect recorded in SQLite. EssentialsX 2.22.0 reports its version, but player join and
 `/sethome` fail in its permissions handler; its player commands require more compatibility work.

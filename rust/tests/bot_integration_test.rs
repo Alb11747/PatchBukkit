@@ -32,19 +32,24 @@ async fn test_fake_bot_join_and_interaction() {
     advanced_config.networking.java.online_mode = false;
     advanced_config.networking.java.encryption = false;
     advanced_config.networking.bedrock.enabled = false;
-    advanced_config.networking.rcon.enabled = false;
+    advanced_config.networking.management.enabled = false;
     advanced_config.commands.use_console = false;
 
     let vanilla_data = VanillaData::load();
-    let telemetry_config = TelemetryConfig::default();
+    let telemetry_config = TelemetryConfig {
+        enabled: false,
+        ..Default::default()
+    };
     let pumpkin_server = Arc::new(
         PumpkinServer::new(
             basic_config,
             advanced_config,
             telemetry_config,
             vanilla_data,
+            Vec::new(),
         )
-        .await,
+        .await
+        .expect("Failed to initialize Pumpkin server"),
     );
 
     let server_addr = pumpkin_server

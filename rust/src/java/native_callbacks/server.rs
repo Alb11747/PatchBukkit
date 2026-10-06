@@ -422,17 +422,23 @@ pub fn ffi_native_bridge_create_world_impl(
     let world_name = name.clone();
     let (tx, rx) = tokio::sync::oneshot::channel();
     ctx.runtime.spawn(async move {
-        let world = server.create_world(world_name, dim);
-        let _ = tx.send(world.uuid);
+        let world_uuid = match server.create_world(world_name, dim) {
+            Ok(world) => Some(world.uuid),
+            Err(error) => {
+                tracing::error!(%error, "Failed to create Bukkit world");
+                None
+            }
+        };
+        let _ = tx.send(world_uuid);
     });
 
     let world_uuid = rx.blocking_recv().ok()?;
     Some(CreateWorldResponse {
-        world_uuid: Some(ProtoUuid {
-            value: world_uuid.to_string(),
+        success: world_uuid.is_some(),
+        world_uuid: world_uuid.map(|uuid| ProtoUuid {
+            value: uuid.to_string(),
         }),
         name,
-        success: true,
     })
 }
 

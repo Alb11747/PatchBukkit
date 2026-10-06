@@ -22,17 +22,22 @@ async fn test_pumpkin_server_with_patchbukkit_and_plugins() {
     let mut advanced_config = AdvancedConfiguration::default();
     advanced_config.networking.java.enabled = false;
     advanced_config.networking.bedrock.enabled = false;
-    advanced_config.networking.rcon.enabled = false;
+    advanced_config.networking.management.enabled = false;
 
     let vanilla_data = VanillaData::load();
-    let telemetry_config = pumpkin_config::TelemetryConfig::default();
+    let telemetry_config = pumpkin_config::TelemetryConfig {
+        enabled: false,
+        ..Default::default()
+    };
     let pumpkin_server = PumpkinServer::new(
         basic_config,
         advanced_config,
         telemetry_config,
         vanilla_data,
+        Vec::new(),
     )
-    .await;
+    .await
+    .expect("Failed to initialize Pumpkin server");
 
     let metadata = pumpkin::plugin::PluginMetadata {
         name: "patchbukkit".to_string(),

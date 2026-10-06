@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
+use anyhow::Context;
 use pumpkin_data::packet::CURRENT_MC_VERSION;
 use pumpkin_protocol::codec::var_int::VarInt;
 use pumpkin_protocol::java::client::config::{
@@ -36,6 +37,8 @@ pub struct BotClient {
     network_reader: Arc<Mutex<TCPNetworkDecoder<BufReader<OwnedReadHalf>>>>,
     pub in_play: Arc<AtomicBool>,
     pub closed: Arc<AtomicBool>,
+    failure: Mutex<Option<String>>,
+    last_received: Mutex<Option<(ConnectionState, i32)>>,
 }
 
 impl BotClient {
@@ -71,6 +74,8 @@ impl BotClient {
             network_reader: reader,
             in_play: Arc::new(AtomicBool::new(false)),
             closed: Arc::new(AtomicBool::new(false)),
+            failure: Mutex::new(None),
+            last_received: Mutex::new(None),
         });
 
         debug!("[BOT] Connected TCP stream to {address}, sending SHandShake...");
@@ -94,140 +99,94 @@ impl BotClient {
         // 3. Start packet processing loop in background
         let bot_clone = bot.clone();
         tokio::spawn(async move {
-            let mut connection_state = ConnectionState::Login;
-            trace!("[BOT] Background reader loop started in state: {connection_state:?}");
-            loop {
-                if bot_clone.closed.load(Ordering::Relaxed) {
-                    trace!("[BOT] Reader loop exiting: closed flag set");
-                    break;
-                }
-                let packet_opt = {
-                    let mut reader_guard = bot_clone.network_reader.lock().await;
-                    reader_guard.get_raw_packet().await
-                };
-
-                let raw = match packet_opt {
-                    Ok(raw) => raw,
-                    Err(e) => {
-                        debug!("[BOT] Reader loop error reading packet: {e:?}");
-                        break;
-                    }
-                };
-
-                trace!(
-                    "[BOT] Received raw packet id=0x{:02X} ({}) len={} in state {:?}",
-                    raw.id,
-                    raw.id,
-                    raw.payload.len(),
-                    connection_state
-                );
-
-                match connection_state {
-                    ConnectionState::Login => {
-                        let mut bytebuf = &raw.payload[..];
-                        if raw.id == CSetCompression::to_id(CURRENT_MC_VERSION) {
-                            trace!("[BOT] Login -> CSetCompression");
-                            if let Ok(pkt) =
-                                CSetCompression::read(&mut bytebuf, &CURRENT_MC_VERSION)
-                            {
-                                debug!("[BOT] Enabling compression threshold {}", pkt.threshold.0);
-                                bot_clone
-                                    .network_reader
-                                    .lock()
-                                    .await
-                                    .set_compression(pkt.threshold.0 as usize);
-                                bot_clone
-                                    .network_writer
-                                    .lock()
-                                    .await
-                                    .set_compression((pkt.threshold.0 as usize, 6));
-                            }
-                        } else if raw.id == CLoginSuccess::to_id(CURRENT_MC_VERSION) {
-                            debug!(
-                                "[BOT] Login -> CLoginSuccess! Sending SLoginAcknowledged and SKnownPacks"
-                            );
-                            let _ = bot_clone.send_packet(&SLoginAcknowledged).await;
-                            connection_state = ConnectionState::Config;
-                            let _ = bot_clone
-                                .send_packet(&SKnownPacks {
-                                    known_packs: Vec::new(),
-                                })
-                                .await;
-                        } else if raw.id == CLoginDisconnect::to_id(CURRENT_MC_VERSION) {
-                            debug!("[BOT] Login -> CLoginDisconnect! Server kicked bot in login");
-                            break;
-                        } else {
-                            trace!("[BOT] Unhandled packet in Login state: id=0x{:02X}", raw.id);
-                        }
-                    }
-                    ConnectionState::Config => {
-                        let mut bytebuf = &raw.payload[..];
-                        if raw.id == CKnownPacks::to_id(CURRENT_MC_VERSION) {
-                            trace!("[BOT] Config -> CKnownPacks, responding SKnownPacks");
-                            let _ = bot_clone
-                                .send_packet(&SKnownPacks {
-                                    known_packs: Vec::new(),
-                                })
-                                .await;
-                        } else if raw.id == CConfigPing::to_id(CURRENT_MC_VERSION) {
-                            trace!("[BOT] Config -> CConfigPing, responding SConfigPong");
-                            if let Ok(pkt) = CConfigPing::read(&mut bytebuf, &CURRENT_MC_VERSION) {
-                                let _ = bot_clone.send_packet(&SConfigPong { id: pkt.id }).await;
-                            }
-                        } else if raw.id == CFinishConfig::to_id(CURRENT_MC_VERSION) {
-                            debug!("[BOT] Config -> CFinishConfig! Transitioning to Play");
-                            let _ = bot_clone.send_packet(&SAcknowledgeFinishConfig).await;
-                            connection_state = ConnectionState::Play;
-                        } else if raw.id == CConfigDisconnect::to_id(CURRENT_MC_VERSION) {
-                            debug!(
-                                "[BOT] Config -> CConfigDisconnect! Server kicked bot in config"
-                            );
-                            break;
-                        } else {
-                            trace!(
-                                "[BOT] Unhandled packet in Config state: id=0x{:02X}",
-                                raw.id
-                            );
-                        }
-                    }
-                    ConnectionState::Play => {
-                        let mut bytebuf = &raw.payload[..];
-                        if raw.id == CKeepAlive::to_id(CURRENT_MC_VERSION) {
-                            if let Ok(pkt) = CKeepAlive::read(&mut bytebuf, &CURRENT_MC_VERSION) {
-                                let _ = bot_clone
-                                    .send_packet(&SKeepAlive {
-                                        keep_alive_id: pkt.keep_alive_id,
-                                    })
-                                    .await;
-                            }
-                        } else if raw.id == CPlayerPosition::to_id(CURRENT_MC_VERSION) {
-                            debug!(
-                                "[BOT] Play -> CPlayerPosition! Confirming teleport and setting in_play=true"
-                            );
-                            if let Ok(pkt) =
-                                CPlayerPosition::read(&mut bytebuf, &CURRENT_MC_VERSION)
-                            {
-                                let _ = bot_clone
-                                    .send_packet(&SConfirmTeleport {
-                                        teleport_id: pkt.teleport_id,
-                                        position: pkt.position,
-                                        yaw: pkt.yaw,
-                                        pitch: pkt.pitch,
-                                    })
-                                    .await;
-                                let _ = bot_clone.send_packet(&SPlayerLoaded).await;
-                                bot_clone.in_play.store(true, Ordering::Release);
-                            }
-                        }
-                    }
-                    _ => {}
-                }
+            if let Err(error) = bot_clone.read_packets().await {
+                *bot_clone.failure.lock().await = Some(format!("{error:#}"));
             }
             trace!("[BOT] Reader loop ended, marking closed=true");
             bot_clone.closed.store(true, Ordering::Release);
         });
 
         Ok(bot)
+    }
+
+    async fn read_packets(&self) -> anyhow::Result<()> {
+        let mut connection_state = ConnectionState::Login;
+        while !self.closed.load(Ordering::Acquire) {
+            let raw = self
+                .network_reader
+                .lock()
+                .await
+                .get_raw_packet()
+                .await
+                .with_context(|| format!("Reading bot packet in {connection_state:?}"))?;
+            *self.last_received.lock().await = Some((connection_state, raw.id));
+            trace!(state = ?connection_state, packet_id = raw.id, bytes = raw.payload.len(), "Bot received packet");
+            let mut payload = &raw.payload[..];
+            match connection_state {
+                ConnectionState::Login => {
+                    if raw.id == CSetCompression::to_id(CURRENT_MC_VERSION) {
+                        let packet = CSetCompression::read(&mut payload, &CURRENT_MC_VERSION)
+                            .context("Reading login compression settings")?;
+                        let threshold = usize::try_from(packet.threshold.0)
+                            .context("Negative login compression threshold")?;
+                        self.network_reader.lock().await.set_compression(threshold);
+                        self.network_writer
+                            .lock()
+                            .await
+                            .set_compression((threshold, 6));
+                    } else if raw.id == CLoginSuccess::to_id(CURRENT_MC_VERSION) {
+                        self.send_packet(&SLoginAcknowledged).await?;
+                        connection_state = ConnectionState::Config;
+                    } else if raw.id == CLoginDisconnect::to_id(CURRENT_MC_VERSION) {
+                        let packet = CLoginDisconnect::read(&mut payload, &CURRENT_MC_VERSION)
+                            .context("Reading login disconnect")?;
+                        anyhow::bail!("Server rejected bot login: {}", packet.json_reason);
+                    }
+                }
+                ConnectionState::Config => {
+                    if raw.id == CKnownPacks::to_id(CURRENT_MC_VERSION) {
+                        // Select packs only in response to the server's offer.
+                        self.send_packet(&SKnownPacks {
+                            known_packs: Vec::new(),
+                        })
+                        .await?;
+                    } else if raw.id == CConfigPing::to_id(CURRENT_MC_VERSION) {
+                        let packet = CConfigPing::read(&mut payload, &CURRENT_MC_VERSION)
+                            .context("Reading configuration ping")?;
+                        self.send_packet(&SConfigPong { id: packet.id }).await?;
+                    } else if raw.id == CFinishConfig::to_id(CURRENT_MC_VERSION) {
+                        self.send_packet(&SAcknowledgeFinishConfig).await?;
+                        connection_state = ConnectionState::Play;
+                    } else if raw.id == CConfigDisconnect::to_id(CURRENT_MC_VERSION) {
+                        anyhow::bail!("Server disconnected bot during configuration");
+                    }
+                }
+                ConnectionState::Play => {
+                    if raw.id == CKeepAlive::to_id(CURRENT_MC_VERSION) {
+                        let packet = CKeepAlive::read(&mut payload, &CURRENT_MC_VERSION)
+                            .context("Reading play keep-alive")?;
+                        self.send_packet(&SKeepAlive {
+                            keep_alive_id: packet.keep_alive_id,
+                        })
+                        .await?;
+                    } else if raw.id == CPlayerPosition::to_id(CURRENT_MC_VERSION) {
+                        let packet = CPlayerPosition::read(&mut payload, &CURRENT_MC_VERSION)
+                            .context("Reading initial player teleport")?;
+                        self.send_packet(&SConfirmTeleport {
+                            teleport_id: packet.teleport_id,
+                            position: packet.position,
+                            yaw: packet.yaw,
+                            pitch: packet.pitch,
+                        })
+                        .await?;
+                        self.send_packet(&SPlayerLoaded).await?;
+                        self.in_play.store(true, Ordering::Release);
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(())
     }
 
     pub async fn wait_for_play(&self, timeout: Duration) -> anyhow::Result<()> {
@@ -237,11 +196,17 @@ impl BotClient {
                 return Ok(());
             }
             if self.closed.load(Ordering::Acquire) {
+                if let Some(error) = self.failure.lock().await.as_ref() {
+                    anyhow::bail!("Bot connection failed before Play: {error}");
+                }
                 anyhow::bail!("Bot connection closed before entering Play state");
             }
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
-        anyhow::bail!("Timed out waiting for bot to enter Play state");
+        let last_received = *self.last_received.lock().await;
+        anyhow::bail!(
+            "Timed out waiting for bot to enter Play state; last received: {last_received:?}"
+        );
     }
 
     pub async fn send_command(&self, command: &str) -> anyhow::Result<()> {
