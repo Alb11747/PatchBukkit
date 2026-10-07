@@ -12,12 +12,12 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 # Native ABI 7 must match the server revision used for this compatibility build.
-pumpkin = { git = "https://github.com/Alb11747/Pumpkin.git", rev = "fb8cc1f515faa9fe2a1b9ecc0143b6bb47c2c8f7", package = "pumpkin-core" }
-pumpkin-data = { git = "https://github.com/Alb11747/Pumpkin.git", rev = "fb8cc1f515faa9fe2a1b9ecc0143b6bb47c2c8f7", package = "pumpkin-data" }
-pumpkin-protocol = { git = "https://github.com/Alb11747/Pumpkin.git", rev = "fb8cc1f515faa9fe2a1b9ecc0143b6bb47c2c8f7", package = "pumpkin-protocol" }
-pumpkin-util = { git = "https://github.com/Alb11747/Pumpkin.git", rev = "fb8cc1f515faa9fe2a1b9ecc0143b6bb47c2c8f7", package = "pumpkin-util" }
-pumpkin-config = { git = "https://github.com/Alb11747/Pumpkin.git", rev = "fb8cc1f515faa9fe2a1b9ecc0143b6bb47c2c8f7", package = "pumpkin-config" }
-pumpkin-api-macros = { git = "https://github.com/Alb11747/Pumpkin.git", rev = "fb8cc1f515faa9fe2a1b9ecc0143b6bb47c2c8f7", package = "pumpkin-api-macros" }
+pumpkin = { git = "https://github.com/Alb11747/Pumpkin.git", rev = "a35b075c6d11503e4f93704dfd185d6e584b183d", package = "pumpkin-core" }
+pumpkin-data = { git = "https://github.com/Alb11747/Pumpkin.git", rev = "a35b075c6d11503e4f93704dfd185d6e584b183d", package = "pumpkin-data" }
+pumpkin-protocol = { git = "https://github.com/Alb11747/Pumpkin.git", rev = "a35b075c6d11503e4f93704dfd185d6e584b183d", package = "pumpkin-protocol" }
+pumpkin-util = { git = "https://github.com/Alb11747/Pumpkin.git", rev = "a35b075c6d11503e4f93704dfd185d6e584b183d", package = "pumpkin-util" }
+pumpkin-config = { git = "https://github.com/Alb11747/Pumpkin.git", rev = "a35b075c6d11503e4f93704dfd185d6e584b183d", package = "pumpkin-config" }
+pumpkin-api-macros = { git = "https://github.com/Alb11747/Pumpkin.git", rev = "a35b075c6d11503e4f93704dfd185d6e584b183d", package = "pumpkin-api-macros" }
 
 tokio = "1"
 tracing = "0.1"

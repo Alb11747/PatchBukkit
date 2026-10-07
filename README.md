@@ -33,7 +33,7 @@ publication, task execution and cancellation; enabling a plugin is still only a 
 The bridge's 50 ms scheduler heartbeat does not yet follow paused or altered server tick rates.
 
 The fork pins the `pumpkin` dependency alias to the `pumpkin-core` library at server revision
-`fb8cc1f515faa9fe2a1b9ecc0143b6bb47c2c8f7` (native API 7). Server and bridge builds must also use the
+`a35b075c6d11503e4f93704dfd185d6e584b183d` (native API 7). Server and bridge builds must also use the
 same Rust toolchain, target and profile. The dev profile disables debuginfo to match that server
 workspace. Existing native libraries built for another revision must be rebuilt.
 
