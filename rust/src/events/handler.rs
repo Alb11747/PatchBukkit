@@ -4969,7 +4969,7 @@ impl PatchBukkitEvent for pumpkin::plugin::entity::entity_damage::EntityDamageEv
                 data: Some(Data::EntityDamage(EntityDamageEvent {
                     entity_id: self.entity_id,
                     damage: self.damage,
-                    damage_type: self.damage_type.message_id.to_string(),
+                    damage_type: damage_type_name(self.damage_type),
                 })),
             },
             context: EventContext {
@@ -5043,6 +5043,7 @@ impl PatchBukkitEvent for pumpkin::plugin::entity::entity_death::EntityDeathEven
                 data: Some(Data::EntityDeath(EntityDeathEvent {
                     entity_id: self.entity_id,
                     dropped_exp: self.dropped_exp,
+                    context: death_context(&server, self.entity_id),
                 })),
             },
             context: EventContext {
@@ -5064,6 +5065,7 @@ impl PatchBukkitEvent for pumpkin::plugin::entity::entity_death::PlayerDeathEven
                     death_message: serde_json::to_string(&self.death_message).unwrap_or_default(),
                     dropped_exp: self.dropped_exp,
                     keep_inventory: self.keep_inventory,
+                    context: death_context(&server, self.player.living_entity.entity.entity_id),
                 })),
             },
             context: EventContext {
@@ -5075,6 +5077,77 @@ impl PatchBukkitEvent for pumpkin::plugin::entity::entity_death::PlayerDeathEven
 
     fn set_cancelled(&mut self, cancelled: bool) {
         pumpkin::plugin::Cancellable::set_cancelled(self, cancelled);
+    }
+}
+
+fn death_context(server: &Arc<Server>, entity_id: i32) -> Option<DeathContext> {
+    for world in server.worlds.load().iter() {
+        let entity = world.get_entity_by_id(entity_id);
+        let Some(entity) = entity else { continue };
+        let base = entity.get_entity();
+        let living = entity.get_living_entity()?;
+        let pos = base.pos.load();
+        let killer_uuid = living.get_kill_credit().and_then(|credit| {
+            credit.get_player().map(|player| Uuid {
+                value: player.gameprofile.id.to_string(),
+            })
+        });
+        return Some(DeathContext {
+            entity_uuid: Some(Uuid {
+                value: base.entity_uuid.to_string(),
+            }),
+            entity_type: base.entity_type.resource_name.to_string(),
+            world_uuid: Some(Uuid {
+                value: world.uuid.to_string(),
+            }),
+            x: pos.x,
+            y: pos.y,
+            z: pos.z,
+            damage_type: living
+                .get_last_damage_type()
+                .map(damage_type_name)
+                .unwrap_or_default(),
+            killer_uuid,
+            show_death_messages: world.level_info.load().game_rules.show_death_messages,
+        });
+    }
+    None
+}
+
+fn damage_type_name(kind: pumpkin_data::damage::DamageType) -> String {
+    // message_id is a translation identifier, shared by several damage types.
+    // Resolve through the engine registry rather than guessing a Bukkit key.
+    pumpkin_data::registry::REGISTRY_V_26_3
+        .iter()
+        .find(|registry| registry.registry_id == "damage_type")
+        .and_then(|registry| {
+            registry.entries.iter().find(|entry| {
+                pumpkin_data::damage::DamageType::from_name(entry.name)
+                    .is_some_and(|candidate| candidate.id == kind.id)
+            })
+        })
+        .map(|entry| entry.name.to_string())
+        .expect("Engine damage type is missing from its generated registry")
+}
+
+#[cfg(test)]
+mod damage_type_mapping_tests {
+    use super::damage_type_name;
+    use pumpkin_data::damage::DamageType;
+
+    #[test]
+    fn every_engine_damage_type_resolves_to_its_exact_registry_key() {
+        for id in 0..=u8::MAX {
+            if let Some(kind) = DamageType::from_id(id) {
+                let key = damage_type_name(kind);
+                assert_eq!(DamageType::from_name(&key).unwrap().id, id);
+            }
+        }
+        assert_eq!(
+            damage_type_name(DamageType::MOB_ATTACK_NO_AGGRO),
+            "mob_attack_no_aggro"
+        );
+        assert_eq!(damage_type_name(DamageType::PLAYER_ATTACK), "player_attack");
     }
 }
 

@@ -928,23 +928,23 @@ public class PatchBukkitEventFactory {
             }
             case ENTITY_DAMAGE -> {
                 var ev = event.getEntityDamage();
-                yield createGenericBukkitEvent("org.bukkit.event.entity.EntityDamageEvent", ev);
+                yield PatchBukkitEntityEvents.damage(ev);
             }
             case ENTITY_DAMAGE_BY_BLOCK -> {
                 var ev = event.getEntityDamageByBlock();
-                yield createGenericBukkitEvent("org.bukkit.event.entity.EntityDamageByBlockEvent", ev);
+                yield PatchBukkitEntityEvents.damageByBlock(ev);
             }
             case ENTITY_DAMAGE_BY_ENTITY -> {
                 var ev = event.getEntityDamageByEntity();
-                yield createGenericBukkitEvent("org.bukkit.event.entity.EntityDamageByEntityEvent", ev);
+                yield PatchBukkitEntityEvents.damageByEntity(ev);
             }
             case ENTITY_DEATH -> {
                 var ev = event.getEntityDeath();
-                yield createGenericBukkitEvent("org.bukkit.event.entity.EntityDeathEvent", ev);
+                yield PatchBukkitEntityEvents.death(ev);
             }
             case PLAYER_DEATH -> {
                 var ev = event.getPlayerDeath();
-                yield createGenericBukkitEvent("org.bukkit.event.entity.PlayerDeathEvent", ev);
+                yield PatchBukkitEntityEvents.playerDeath(ev);
             }
             case ENTITY_DISMOUNT -> {
                 var ev = event.getEntityDismount();
@@ -1213,6 +1213,9 @@ public class PatchBukkitEventFactory {
     public static byte[] toFireEventResponse(@NotNull org.bukkit.event.Event event) {
         try {
             boolean cancelled = event instanceof org.bukkit.event.Cancellable c && c.isCancelled();
+            if (event instanceof org.bukkit.event.entity.EntityDamageEvent damage && !cancelled) {
+                damage.getEntity().setLastDamageCause(damage);
+            }
             return FireEventResponse.newBuilder()
                 .setCancelled(cancelled)
                 .build()

@@ -670,15 +670,15 @@ public class PatchBukkitEntity implements Entity {
 
     @Override
     public void setLastDamageCause(@Nullable EntityDamageEvent event) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setLastDamageCause'");
+        this.lastDamageCause = event;
     }
 
     @Override
     public @Nullable EntityDamageEvent getLastDamageCause() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getLastDamageCause'");
+        return this.lastDamageCause;
     }
+
+    private EntityDamageEvent lastDamageCause;
 
     @Override
     public @NotNull UUID getUniqueId() {
