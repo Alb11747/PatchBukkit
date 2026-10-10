@@ -28,11 +28,19 @@ where
     let uuid_str = &proto_uuid?.value;
     let player_uuid = uuid::Uuid::parse_str(uuid_str).ok()?;
 
-    if let Ok(read_guard) = PLAYER_HANDLE_CACHE.read()
-        && let Some(ref cache) = *read_guard
-        && let Some(player) = cache.get(&player_uuid)
-    {
-        return Some(f(player.clone()));
+    let cached_player = {
+        if let Ok(read_guard) = PLAYER_HANDLE_CACHE.read()
+            && let Some(ref cache) = *read_guard
+        {
+            cache.get(&player_uuid).cloned()
+        } else {
+            None
+        }
+    };
+
+    // Callbacks can reenter cache_player, which needs the cache's write lock.
+    if let Some(player) = cached_player {
+        return Some(f(player));
     }
 
     let player = ctx.plugin_context.server.get_player_by_uuid(player_uuid)?;
